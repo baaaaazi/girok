@@ -430,6 +430,9 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .category-option-selected .category-icon { color: var(--cat-ink-color); transform: scale(1.12); }
 .memo-field { display: block; margin-top: 14px; }
 .memo-label { display: block; margin-bottom: 7px; color: var(--muted); font-size: 12px; }
+.memo-note { color: var(--faint); }
+/* Lift toasts above the multi-select bar so they never overlap it. */
+.app-shell:has(.selection-bar) .notice { bottom: calc(148px + env(safe-area-inset-bottom, 0px)); }
 .memo-input { display: block; width: 100%; min-height: 76px; padding: 11px 12px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; outline: 0; background: var(--bg); color: var(--ink); line-height: 1.5; }
 .memo-input:focus { border-color: var(--line-strong); }
 .editor-option, .remove-secondary { min-height: 44px; padding: 0 2px; border: 0; background: transparent; color: var(--muted); font-size: 12px; text-align: left; }

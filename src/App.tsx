@@ -446,6 +446,7 @@ function DateHeader({ date, display, onPrevious, onNext, onToday }: {
   </div>
 }
 
+const MEMO_SAVE_DELAY_MS = 400
 const LONG_PRESS_MS = 420
 const LONG_PRESS_SLOP = 8
 
@@ -997,8 +998,30 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
       // showModal() focuses the first radio, whose focus ring reads as a second selection.
       titleRef.current?.focus()
     }
-    return () => { if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current) }
+    return () => {
+      if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current)
+      if (memoTimer.current !== undefined) window.clearTimeout(memoTimer.current)
+    }
   }, [])
+
+  // Each save re-validates and rewrites all records, so memo typing is saved once the user pauses.
+  const memoTimer = useRef<number | undefined>(undefined)
+  const pendingMemo = useRef<(() => void) | null>(null)
+  const cancelMemo = () => {
+    if (memoTimer.current !== undefined) window.clearTimeout(memoTimer.current)
+    memoTimer.current = undefined
+    pendingMemo.current = null
+  }
+  const flushMemo = () => {
+    const run = pendingMemo.current
+    cancelMemo()
+    run?.()
+  }
+  const persistMemoLater = (nextPrimary: DraftActivity, nextSecondary: DraftActivity, showSecondary: boolean) => {
+    cancelMemo()
+    pendingMemo.current = () => persist(nextPrimary, nextSecondary, showSecondary)
+    memoTimer.current = window.setTimeout(flushMemo, MEMO_SAVE_DELAY_MS)
+  }
 
   const persist = (nextPrimary: DraftActivity, nextSecondary: DraftActivity, showSecondary = secondaryVisible): boolean => {
     if (!nextPrimary.category) return true
@@ -1012,6 +1035,7 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
   const close = () => {
     const dialog = dialogRef.current
     if (!dialog?.open || closingRef.current) return
+    flushMemo()
     closingRef.current = true
     setClosingAttribute()
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -1023,6 +1047,8 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
   const setClosingAttribute = () => dialogRef.current?.setAttribute('data-closing', '')
   const submit = (event: FormEvent) => { event.preventDefault(); close() }
   const chooseCategory = (slot: 1 | 2, category: CategoryId) => {
+    // The category save below carries the latest memo text, so a pending memo save is redundant.
+    cancelMemo()
     if (slot === 1) {
       const next = { ...primary, category }
       setPrimary(next)
@@ -1053,18 +1079,18 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
         <legend>{secondaryVisible ? '활동 1' : '무슨 일을 했나요?'}</legend>
         {categoryOptions(1, primary.category)}
         {memoVisible
-          ? <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-1`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hourKey}-1`} className="memo-input" value={primary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...primary, text: event.target.value }; setPrimary(next); persist(next, secondary) }} /></label>
+          ? <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-1`}><span className="memo-label">메모{multiple && <span className="memo-note"> · 선택한 {selectedHours.length}칸에 모두 들어가요</span>}</span><textarea id={`entry-memo-${date}-${hourKey}-1`} className="memo-input" value={primary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...primary, text: event.target.value }; setPrimary(next); persistMemoLater(next, secondary, secondaryVisible) }} /></label>
           : primary.category && <button className="editor-option" type="button" onClick={() => setMemoVisible(true)}>+ 메모 추가</button>}
       </fieldset>
       {secondaryVisible && <fieldset className="activity-fieldset activity-fieldset-secondary">
         <legend>활동 2</legend>
         {categoryOptions(2, secondary.category)}
-        {memoVisible && secondary.category && <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-2`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hourKey}-2`} className="memo-input" value={secondary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...secondary, text: event.target.value }; setSecondary(next); persist(primary, next, true) }} /></label>}
-        <button className="remove-secondary" type="button" onClick={() => { const empty = { category: null, text: '' }; setSecondary(empty); setSecondaryVisible(false); persist(primary, empty, false) }}>두 번째 활동 빼기</button>
+        {memoVisible && secondary.category && <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-2`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hourKey}-2`} className="memo-input" value={secondary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...secondary, text: event.target.value }; setSecondary(next); persistMemoLater(primary, next, true) }} /></label>}
+        <button className="remove-secondary" type="button" onClick={() => { cancelMemo(); const empty = { category: null, text: '' }; setSecondary(empty); setSecondaryVisible(false); persist(primary, empty, false) }}>두 번째 활동 빼기</button>
       </fieldset>}
       {primary.category && !secondaryVisible && <button className="editor-option" type="button" onClick={() => setSecondaryVisible(true)}>+ 활동 하나 더</button>}
       <footer className="dialog-footer">
-        {hasRecord && <button className="delete-entry" type="button" onClick={() => { if (onDelete()) close(); else setSaveFailed(true) }}>{multiple ? '선택한 칸 기록 삭제' : '이 시간 기록 삭제'}</button>}
+        {hasRecord && <button className="delete-entry" type="button" onClick={() => { cancelMemo(); if (onDelete()) close(); else setSaveFailed(true) }}>{multiple ? '선택한 칸 기록 삭제' : '이 시간 기록 삭제'}</button>}
         <span className={`save-status ${saveFailed ? 'save-status-error' : ''}`} role="status" aria-live="polite">{saveFailed ? '저장하지 못함' : primary.category ? '자동 저장됨' : '카테고리를 선택하면 저장돼요'}</span>
         <button className="save-entry" type="submit">완료</button>
       </footer>

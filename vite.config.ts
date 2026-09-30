@@ -7,6 +7,19 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        // Pretendard ships ~90 unicode-range subsets (3MB); cache only the ones a device actually uses.
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'font',
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'girok-fonts',
+              expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+        ],
+      },
       includeAssets: ['favicon.svg', 'pwa-192.png', 'pwa-192-maskable.png', 'pwa-512.png', 'pwa-512-maskable.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'girok — 하루 기록장',
