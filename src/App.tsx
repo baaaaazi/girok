@@ -631,6 +631,8 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
     if (file.size > 1_000_000) { onNotice({ text: '1MB보다 작은 JSON 파일만 가져올 수 있어요.', kind: 'error' }); return }
     const result = parseImportedData(await file.text())
     if ('error' in result) { onNotice({ text: result.error, kind: 'error' }); return }
+    const importedDays = Object.keys(result.data.records).length
+    if (dateCount > 0 && !window.confirm(`현재 기록(${dateCount}일)을 백업 파일의 기록(${importedDays}일)으로 모두 바꿀까요? 이 작업은 되돌릴 수 없어요.`)) return
     onImport(result.data)
   }
 
@@ -692,6 +694,7 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
   onDelete: () => boolean
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
   const closeTimer = useRef<number | undefined>(undefined)
   const closingRef = useRef(false)
   const [primary, setPrimary] = useState<DraftActivity>(() => record?.segments[0] ? { ...record.segments[0] } : { category: null, text: '' })
@@ -702,7 +705,11 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
 
   useEffect(() => {
     const dialog = dialogRef.current
-    if (dialog && !dialog.open) dialog.showModal()
+    if (dialog && !dialog.open) {
+      dialog.showModal()
+      // showModal() focuses the first radio, whose focus ring reads as a second selection.
+      titleRef.current?.focus()
+    }
     return () => { if (closeTimer.current !== undefined) window.clearTimeout(closeTimer.current) }
   }, [])
 
@@ -754,7 +761,7 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
     onClose={onClose}
   >
     <form className="entry-form" onSubmit={submit}>
-      <header className="dialog-heading"><div><span className="eyebrow">{displayDate(date).compact}</span><h2 id={titleId}>{hourLabel(hour)} 기록</h2></div></header>
+      <header className="dialog-heading"><div><span className="eyebrow">{displayDate(date).compact}</span><h2 id={titleId} ref={titleRef} tabIndex={-1}>{hourLabel(hour)} 기록</h2></div></header>
       <fieldset className="activity-fieldset">
         <legend>{secondaryVisible ? '활동 1' : '무슨 일을 했나요?'}</legend>
         {categoryOptions(1, primary.category)}

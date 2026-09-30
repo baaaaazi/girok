@@ -313,7 +313,7 @@ h2 { letter-spacing: -0.035em; font-size: 17px; font-weight: 620; line-height: 1
   .notice { opacity: 0; transform: translateY(8px); }
 }
 .entry-form { display: grid; max-height: inherit; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 22px; }
-.dialog-heading h2 { font-size: 22px; }
+.dialog-heading h2 { font-size: 22px; outline: none; }
 .dialog-heading .eyebrow { margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .activity-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 .activity-fieldset-secondary { padding-top: 16px; border-top: 1px solid var(--line); }
@@ -321,7 +321,7 @@ h2 { letter-spacing: -0.035em; font-size: 17px; font-weight: 620; line-height: 1
 .category-options { display: flex; flex-wrap: wrap; gap: 7px; }
 .category-option { display: inline-flex; min-height: 44px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 99px; background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; transition: transform 120ms var(--ease-out); }
 .category-option:active { transform: scale(0.97); }
-.category-option-selected { border-color: var(--category); background: color-mix(in srgb, var(--category) 12%, var(--surface)); color: var(--ink); font-weight: 650; }
+.category-option-selected { border-color: var(--category); background: color-mix(in srgb, var(--category) 20%, var(--surface)); color: var(--ink); font-weight: 650; }
 .category-option:focus-within { outline: 2px solid var(--focus); outline-offset: 3px; }
 .category-option .activity-dot { width: 6px; height: 6px; }
 .memo-field { display: block; margin-top: 14px; }
