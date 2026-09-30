@@ -3,6 +3,7 @@ import { CATEGORY_IDS, type Activity, type AppData, type DayRecord, type HourRec
 export const LEGACY_STORAGE_KEY = 'girok:data:v1'
 export const STORAGE_KEY = 'girok:data:v2'
 export const THEME_KEY = 'girok:theme:v1'
+export const CORRUPT_BACKUP_KEY = 'girok:data:v2:unreadable'
 export const EMPTY_DATA: AppData = { version: 2, records: {} }
 
 const categorySet = new Set<string>(CATEGORY_IDS)
@@ -80,6 +81,10 @@ export function readData(): AppData {
     if (current) {
       const parsed = parseCanonical(current)
       if (parsed && !parsed.migrated) return parsed.data
+      // The next save overwrites STORAGE_KEY, so park the unreadable bytes where a later fix can recover them.
+      if (localStorage.getItem(CORRUPT_BACKUP_KEY) === null) {
+        try { localStorage.setItem(CORRUPT_BACKUP_KEY, current) } catch { /* Best effort; reading still continues. */ }
+      }
     }
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
     if (legacy) {

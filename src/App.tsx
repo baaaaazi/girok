@@ -31,6 +31,16 @@ type ReviewMode = 'day' | 'week' | 'month'
 const LIGHT_COLOR = '#FFFFFF'
 const DARK_COLOR = '#111113'
 
+const MULTI_HINT_KEY = 'girok:hint:multi-select'
+
+function readFlag(key: string): boolean {
+  try { return localStorage.getItem(key) === '1' } catch { return false }
+}
+
+function writeFlag(key: string): void {
+  try { localStorage.setItem(key, '1') } catch { /* Hint shows again next session. */ }
+}
+
 function readTheme(): ThemeMode {
   try {
     const value = localStorage.getItem(THEME_KEY)
@@ -115,6 +125,9 @@ export default function App() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [clearArmed, setClearArmed] = useState(false)
   const nextNoticeId = useRef(0)
+  const lastToday = useRef(todayKey())
+  const [, setClock] = useState(0)
+  const [multiHintSeen, setMultiHintSeen] = useState(() => readFlag(MULTI_HINT_KEY))
 
   const showNotice = (next: NoticeContent) => setNotice({ ...next, id: ++nextNoticeId.current })
   const dismissNotice = (id: number) => setNotice((current) => current?.id === id ? null : current)
@@ -157,6 +170,28 @@ export default function App() {
   }, [theme])
 
   useEffect(() => { setSelection(null) }, [selectedDate])
+
+  useEffect(() => {
+    if (selection === null || multiHintSeen) return
+    setMultiHintSeen(true)
+    writeFlag(MULTI_HINT_KEY)
+  }, [selection, multiHintSeen])
+
+  useEffect(() => {
+    const refresh = () => {
+      const now = todayKey()
+      if (now !== lastToday.current) {
+        const previous = lastToday.current
+        setSelectedDate((current) => current === previous ? now : current)
+        lastToday.current = now
+      }
+      setClock((tick) => tick + 1)
+    }
+    const onVisibility = () => { if (document.visibilityState === 'visible') refresh() }
+    const timer = window.setInterval(refresh, 60_000)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { window.clearInterval(timer); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [])
 
   useEffect(() => {
     try { localStorage.setItem(THEME_KEY, theme) } catch { /* Theme remains active for this session. */ }
@@ -212,6 +247,7 @@ export default function App() {
             onNext={() => navigateDate(1)}
             onToday={() => setSelectedDate(todayKey())}
             selection={selection}
+            showMultiHint={!multiHintSeen}
             onSelectionChange={setSelection}
             onOpenHours={setEditorHours}
             onOpenReview={() => { setReviewMode('day'); navigate('review') }}
@@ -293,11 +329,12 @@ function Navigation({ page, onNavigate }: { page: Page; onNavigate: (page: Page)
   </div>
 }
 
-function RecordPage({ date, display, data, selection, onSelectionChange, onPrevious, onNext, onToday, onOpenHours, onOpenReview }: {
+function RecordPage({ date, display, data, selection, showMultiHint, onSelectionChange, onPrevious, onNext, onToday, onOpenHours, onOpenReview }: {
   date: string
   display: ReturnType<typeof displayDate>
   data: AppData
   selection: number[] | null
+  showMultiHint: boolean
   onSelectionChange: Dispatch<SetStateAction<number[] | null>>
   onPrevious: () => void
   onNext: () => void
@@ -310,7 +347,7 @@ function RecordPage({ date, display, data, selection, onSelectionChange, onPrevi
   const presence = categoryPresence(data.records, [date])
   const categories = presentCategories(presence)
   return <section className="record-page" aria-labelledby="record-title">
-    <div className="record-main">
+    <div className={`record-main ${selection ? 'record-main-selecting' : ''}`}>
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
       <div className="record-summary-row">
         <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
@@ -319,7 +356,7 @@ function RecordPage({ date, display, data, selection, onSelectionChange, onPrevi
         </button>
       </div>
       <HourGrid key={date} date={date} day={day} selection={selection} onSelectionChange={onSelectionChange} onOpenHours={onOpenHours} />
-      {!selection && <p className="grid-hint">칸을 길게 누른 채 끌면 여러 칸을 한 번에 기록할 수 있어요.</p>}
+      {!selection && showMultiHint && <p className="grid-hint">칸을 길게 누른 채 끌면 여러 칸을 한 번에 기록할 수 있어요.</p>}
       {categories.length > 0 && <div className="record-categories">
         <ul aria-label="기록한 카테고리">
           {categories.map((category) => <li key={category} style={categoryStyle(category)}>
@@ -399,11 +436,13 @@ function DateHeader({ date, display, onPrevious, onNext, onToday }: {
       <button className="date-step" type="button" onClick={onPrevious} aria-label="이전 날짜"><span aria-hidden="true">←</span></button>
       <div className="date-copy">
         <h1 className="date-number" id="record-title">{display.number}</h1>
-        <div className="date-meta"><span>{display.weekday}</span><span>{date.slice(0, 4)}</span></div>
+        <div className="date-meta">
+          <span>{display.weekday}</span>
+          <span className="date-meta-line">{date.slice(0, 4)}{!isToday(date) && <button className="today-link" type="button" onClick={onToday}>오늘로</button>}</span>
+        </div>
       </div>
       <button className="date-step" type="button" onClick={onNext} aria-label="다음 날짜"><span aria-hidden="true">→</span></button>
     </div>
-    {!isToday(date) && <button className="today-link" type="button" onClick={onToday}>오늘로</button>}
   </div>
 }
 
@@ -429,9 +468,18 @@ function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
     const grid = gridRef.current
     if (!grid) return
     const onTouchMove = (event: TouchEvent) => { if (drag.current) event.preventDefault() }
+    const onWindowPointerUp = () => {
+      if (press.current) window.clearTimeout(press.current.timer)
+      press.current = null
+      drag.current = null
+    }
     grid.addEventListener('touchmove', onTouchMove, { passive: false })
+    window.addEventListener('pointerup', onWindowPointerUp)
+    window.addEventListener('pointercancel', onWindowPointerUp)
     return () => {
       grid.removeEventListener('touchmove', onTouchMove)
+      window.removeEventListener('pointerup', onWindowPointerUp)
+      window.removeEventListener('pointercancel', onWindowPointerUp)
       if (press.current) window.clearTimeout(press.current.timer)
     }
   }, [])
@@ -596,8 +644,8 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
         </g>
       : <path key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
     <circle cx="120" cy="120" r="53" fill="var(--surface-raised)" />
-    <text x="120" y="115" textAnchor="middle" className="ring-center-date">{displayDate(date).number}</text>
-    <text x="120" y="137" textAnchor="middle" className="ring-center-count">{count}시간 기록</text>
+    <text x="120" y="122" textAnchor="middle" className="ring-center-date">{count}</text>
+    <text x="120" y="142" textAnchor="middle" className="ring-center-count">시간 기록</text>
     {markerLabels.map(({ label, x, y, anchor }) => <text key={label} x={x} y={y} textAnchor={anchor} dominantBaseline="middle" className="ring-marker">{label}</text>)}
   </svg>
 }
@@ -863,7 +911,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    if (file.size > 1_000_000) { onNotice({ text: '1MB보다 작은 JSON 파일만 가져올 수 있어요.', kind: 'error' }); return }
+    if (file.size > 20_000_000) { onNotice({ text: '20MB보다 작은 JSON 파일만 가져올 수 있어요.', kind: 'error' }); return }
     const result = parseImportedData(await file.text())
     if ('error' in result) { onNotice({ text: result.error, kind: 'error' }); return }
     const importedDays = Object.keys(result.data.records).length
