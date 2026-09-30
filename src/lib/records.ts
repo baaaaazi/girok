@@ -31,3 +31,8 @@ export function categoryPresence(records: AppData['records'], dates: string[]): 
   }
   return presence
 }
+
+export function presentCategories(presence: Record<CategoryId, number>): CategoryId[] {
+  // Most-recorded first; ties keep the CATEGORY_IDS order (sort is stable).
+  return CATEGORY_IDS.filter((category) => presence[category] > 0).sort((a, b) => presence[b] - presence[a])
+}

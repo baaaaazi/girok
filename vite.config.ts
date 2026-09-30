@@ -13,7 +13,7 @@ export default defineConfig({
         short_name: 'girok',
         description: '조용하게 하루를 기록하는 개인 기록장',
         theme_color: '#F4F1E9',
-        background_color: '#24221D',
+        background_color: '#F4F1E9',
         display: 'standalone',
         lang: 'ko',
         start_url: '/',

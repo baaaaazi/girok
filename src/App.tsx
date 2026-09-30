@@ -17,7 +17,7 @@ import {
   todayKey,
   WEEKDAYS_SHORT,
 } from './lib/date'
-import { categoryPresence, recordedHourCount, replaceHour, reviewHours } from './lib/records'
+import { categoryPresence, presentCategories, recordedHourCount, replaceHour, reviewHours } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 
@@ -112,7 +112,10 @@ export default function App() {
   const navigateReview = (amount: number) => setSelectedDate((current) => reviewMode === 'month'
     ? shiftMonth(current, amount)
     : shiftDate(current, amount * (reviewMode === 'week' ? 7 : 1)))
-  const navigate = (next: Page) => setPage(next)
+  const navigate = (next: Page) => {
+    if (next === 'calendar') setMonthCursor(monthStart(parseDateKey(selectedDate) ?? new Date()))
+    setPage(next)
+  }
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -273,11 +276,22 @@ function RecordPage({ date, display, data, onPrevious, onNext, onToday, onOpenHo
 }) {
   const day = data.records[date] ?? {}
   const recordedHours = Object.keys(day).length
+  const presence = categoryPresence(data.records, [date])
+  const categories = presentCategories(presence)
   return <section className="record-page" aria-labelledby="record-title">
     <div className="record-main">
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
       <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
       <HourGrid date={date} day={day} onOpenHour={onOpenHour} />
+      {categories.length > 0 && <div className="record-categories">
+        <ul aria-label="기록한 카테고리">
+          {categories.map((category) => <li key={category} style={categoryStyle(category)}>
+            <span className="activity-dot" aria-hidden="true" />
+            <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}</span>
+          </li>)}
+        </ul>
+        <button className="overview-link" type="button" onClick={onOpenReview}>하루 돌아보기 <span aria-hidden="true">→</span></button>
+      </div>}
     </div>
     <aside className="day-context" aria-label="선택한 날짜 요약">
       <DayOverview date={date} day={day} records={data.records} onOpenReview={onOpenReview} />
@@ -435,7 +449,7 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
 function DayOverview({ date, day, records, onOpenReview }: { date: string; day: DayRecord; records: AppData['records']; onOpenReview: () => void }) {
   const count = Object.keys(day).length
   const presence = categoryPresence(records, [date])
-  const categories = CATEGORY_IDS.filter((category) => presence[category] > 0)
+  const categories = presentCategories(presence)
   return <div className="day-overview">
     <div className="overview-heading"><span className="eyebrow">이 날의 흐름</span><h2>{displayDate(date).compact}</h2></div>
     <DayRing date={date} day={day} compact />
@@ -451,7 +465,7 @@ function DayOverview({ date, day, records, onOpenReview }: { date: string; day: 
 }
 
 function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) {
-  const present = CATEGORY_IDS.filter((category) => presence[category] > 0)
+  const present = presentCategories(presence)
   if (!present.length) return <p className="review-empty">아직 돌아볼 기록이 없어요.</p>
   return <ul className="category-legend" aria-label="기록한 카테고리">
     {present.map((category) => <li key={category}>
@@ -537,7 +551,7 @@ function DayReview({ date, day }: { date: string; day: DayRecord }) {
 function RangeReview({ records, dates, mode }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month' }) {
   const hoursRecorded = recordedHourCount(records, dates)
   const presence = categoryPresence(records, dates)
-  const present = CATEGORY_IDS.filter((category) => presence[category] > 0)
+  const present = presentCategories(presence)
   return <section className="range-review" aria-label={mode === 'week' ? '7일 돌아보기' : '월 돌아보기'}>
     <div className="range-total"><strong>{hoursRecorded}</strong><span>고유 기록 시간</span></div>
     <p className="range-note">카테고리 수는 해당 활동이 등장한 시간대 수예요. 함께 기록한 활동은 각각 세고, 같은 카테고리가 한 시간대에 두 번 있어도 한 번만 셉니다.</p>

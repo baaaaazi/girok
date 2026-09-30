@@ -191,7 +191,7 @@ h1, h2, h3, p { margin: 0; }
 .hour-number { position: absolute; top: 6px; left: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1; }
 .hour-cell-filled .hour-number { color: var(--ink); font-weight: 650; }
 .hour-now { position: absolute; top: 4px; right: 5px; padding: 1px 5px; border-radius: 99px; background: var(--ink); color: var(--bg); font-size: 9px; font-weight: 650; line-height: 1.4; }
-.hour-cell-now { outline: 2px solid var(--ink); outline-offset: 1px; }
+.hour-cell-now { outline: 1.5px solid color-mix(in srgb, var(--ink) 55%, transparent); outline-offset: 1px; }
 .hour-empty-mark { position: absolute; top: calc(50% + 3px); left: 50%; color: var(--faint); font-size: 21px; font-weight: 300; line-height: 1; transform: translate(-50%, -50%); }
 .hour-activity { position: absolute; right: 7px; bottom: 6px; left: 7px; display: flex; min-width: 0; align-items: center; gap: 5px; font-size: 10px; font-weight: 650; line-height: 1.15; }
 .activity-dot { display: inline-block; width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--category); }
@@ -200,6 +200,13 @@ h1, h2, h3, p { margin: 0; }
 .activity-pair-dots { display: flex; flex: none; gap: 3px; }
 .activity-pair-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--category); }
 .day-context { display: none; }
+.record-categories { max-width: 560px; margin: 20px auto 0; }
+.record-categories ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.record-categories li { display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border-radius: 99px; background: color-mix(in srgb, var(--category) 14%, var(--surface)); font-size: 12px; }
+.record-categories .presence-count { margin-left: 0; }
+.presence-count { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.overview-link { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; margin-top: 14px; padding: 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; transition: transform 120ms var(--ease-out); }
+.overview-link > span { color: var(--muted); font-size: 16px; }
 
 .day-ring { display: block; width: min(100%, 340px); height: auto; margin: 0 auto; overflow: visible; }
 .day-ring-compact { width: min(100%, 260px); }
@@ -386,6 +393,7 @@ h2 { letter-spacing: -0.035em; font-size: 17px; font-weight: 620; line-height: 1
   .record-main { width: 100%; }
   .hour-grid { height: auto; }
   .hour-cell { height: 64px; }
+  .record-categories { display: none; }
   .day-context { position: sticky; top: 88px; display: block; min-width: 0; padding-top: 1px; }
   .day-overview { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
   .overview-heading .eyebrow { margin-bottom: 5px; }
@@ -396,10 +404,7 @@ h2 { letter-spacing: -0.035em; font-size: 17px; font-weight: 620; line-height: 1
   .overview-total span { color: var(--muted); font-size: 12px; }
   .overview-categories { display: grid; gap: 0; margin: 12px 0 0; padding: 0; list-style: none; }
   .overview-categories li { display: flex; min-height: 36px; align-items: center; gap: 8px; border-top: 1px solid var(--line); font-size: 12px; }
-  .presence-count { margin-left: auto; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
   .overview-empty { margin-top: 12px; color: var(--muted); font-size: 12px; }
-.overview-link { display: flex; width: 100%; min-height: 44px; align-items: center; justify-content: space-between; margin-top: 14px; padding: 0; border: 0; border-top: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; font-size: 12px; font-weight: 600; transition: transform 120ms var(--ease-out); }
-  .overview-link > span { color: var(--muted); font-size: 16px; }
 }
 
 @media (max-width: 719px) {
