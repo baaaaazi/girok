@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
-import { categoryPresence, recordedHourCount, replaceHour, reviewHours, timeBlocks } from '../src/lib/records.ts'
+import { categoryPresence, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 
@@ -132,5 +132,10 @@ assert.deepEqual(timeBlocks({
   { kind: 'gap', start: 4, end: 6 },
   { kind: 'record', start: 6, end: 7, categories: ['study'], notes: [] },
 ])
+
+const bulk = replaceHours(canonical, '2026-09-18', [0, 1, 2], { segments: [sleep] })
+assert.deepEqual(Object.keys(bulk.records['2026-09-18']), ['0', '1', '2'])
+assert.deepEqual(bulk.records['2026-09-17'], canonical.records['2026-09-17'])
+assert.equal(replaceHours(bulk, '2026-09-18', [0, 1, 2], null).records['2026-09-18'], undefined)
 
 console.log('self-check passed')

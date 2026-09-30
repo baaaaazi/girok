@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   dateKey,
   displayDate,
@@ -17,7 +17,7 @@ import {
   todayKey,
   WEEKDAYS_SHORT,
 } from './lib/date'
-import { categoryPresence, presentCategories, recordedHourCount, replaceHour, reviewHours, timeBlocks } from './lib/records'
+import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { CategoryIcon } from './icons'
@@ -86,6 +86,16 @@ function formatRangeTime(minutes: number): string {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`
 }
 
+function isContiguous(sortedHours: number[]): boolean {
+  return sortedHours.every((hour, index) => index === 0 || hour === sortedHours[index - 1] + 1)
+}
+
+function hoursLabel(sortedHours: number[]): string {
+  if (sortedHours.length === 1) return `${hourLabel(sortedHours[0])} 기록`
+  if (isContiguous(sortedHours)) return `${hourLabel(sortedHours[0])} – ${formatRangeTime((sortedHours[sortedHours.length - 1] + 1) * 60)}`
+  return `${sortedHours.length}칸 기록`
+}
+
 const NAV_ITEMS: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'record', label: '기록', icon: 'M5 4.5h4.5a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Zm9.5 0H19a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5ZM5 14h4.5a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-4.5A.5.5 0 0 1 5 14Zm9.5 0H19a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5v-4.5a.5.5 0 0 1 .5-.5Z' },
   { id: 'calendar', label: '달력', icon: 'M5.5 5.5h13a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1ZM4.5 10h15M8.5 3.5v4m7-4v4' },
@@ -99,7 +109,9 @@ export default function App() {
   const [monthCursor, setMonthCursor] = useState(() => monthStart(new Date()))
   const [reviewMode, setReviewMode] = useState<ReviewMode>('day')
   const [theme, setTheme] = useState<ThemeMode>(readTheme)
-  const [editorHour, setEditorHour] = useState<number | null>(null)
+  const [editorHours, setEditorHours] = useState<number[] | null>(null)
+  // null = normal tapping; an array = multi-select mode (possibly still empty).
+  const [selection, setSelection] = useState<number[] | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [clearArmed, setClearArmed] = useState(false)
   const nextNoticeId = useRef(0)
@@ -116,13 +128,14 @@ export default function App() {
     return true
   }
 
-  const saveHour = (hour: number, activities: Activity[]) => commitData(replaceHour(data, selectedDate, hour, makeHourRecord(activities)))
-  const deleteHour = (hour: number) => commitData(replaceHour(data, selectedDate, hour, null))
+  const saveHours = (hours: number[], activities: Activity[]) => commitData(replaceHours(data, selectedDate, hours, makeHourRecord(activities)))
+  const deleteHours = (hours: number[]) => commitData(replaceHours(data, selectedDate, hours, null))
   const navigateDate = (amount: number) => setSelectedDate((current) => shiftDate(current, amount))
   const navigateReview = (amount: number) => setSelectedDate((current) => reviewMode === 'month'
     ? shiftMonth(current, amount)
     : shiftDate(current, amount * (reviewMode === 'week' ? 7 : 1)))
   const navigate = (next: Page) => {
+    setSelection(null)
     if (next === 'calendar') setMonthCursor(monthStart(parseDateKey(selectedDate) ?? new Date()))
     setPage(next)
   }
@@ -143,13 +156,15 @@ export default function App() {
     return () => media.removeEventListener('change', apply)
   }, [theme])
 
+  useEffect(() => { setSelection(null) }, [selectedDate])
+
   useEffect(() => {
     try { localStorage.setItem(THEME_KEY, theme) } catch { /* Theme remains active for this session. */ }
   }, [theme])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((page !== 'record' && page !== 'review') || editorHour !== null || event.metaKey || event.ctrlKey || event.altKey) return
+      if ((page !== 'record' && page !== 'review') || editorHours !== null || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, select, button, [contenteditable="true"]')) return
       if (event.key === 'ArrowLeft') {
@@ -165,7 +180,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [page, editorHour, reviewMode])
+  }, [page, editorHours, reviewMode])
 
   const selectedDisplay = displayDate(selectedDate)
   const selectedDay = data.records[selectedDate] ?? {}
@@ -196,7 +211,9 @@ export default function App() {
             onPrevious={() => navigateDate(-1)}
             onNext={() => navigateDate(1)}
             onToday={() => setSelectedDate(todayKey())}
-            onOpenHour={setEditorHour}
+            selection={selection}
+            onSelectionChange={setSelection}
+            onOpenHours={setEditorHours}
             onOpenReview={() => { setReviewMode('day'); navigate('review') }}
           />
         )}
@@ -251,14 +268,14 @@ export default function App() {
         <Navigation page={page} onNavigate={navigate} />
       </nav>
       {notice && <NoticeToast key={notice.id} notice={notice} onDismiss={dismissNotice} />}
-      {editorHour !== null && (
+      {editorHours !== null && (
         <EntryDialog
           date={selectedDate}
-          hour={editorHour}
-          record={data.records[selectedDate]?.[String(editorHour)]}
-          onClose={() => setEditorHour(null)}
-          onSave={(activities) => saveHour(editorHour, activities)}
-          onDelete={() => deleteHour(editorHour)}
+          hours={editorHours}
+          records={editorHours.map((hour) => data.records[selectedDate]?.[String(hour)])}
+          onClose={() => { setEditorHours(null); setSelection(null) }}
+          onSave={(activities) => saveHours(editorHours, activities)}
+          onDelete={() => deleteHours(editorHours)}
         />
       )}
     </div>
@@ -276,14 +293,16 @@ function Navigation({ page, onNavigate }: { page: Page; onNavigate: (page: Page)
   </div>
 }
 
-function RecordPage({ date, display, data, onPrevious, onNext, onToday, onOpenHour, onOpenReview }: {
+function RecordPage({ date, display, data, selection, onSelectionChange, onPrevious, onNext, onToday, onOpenHours, onOpenReview }: {
   date: string
   display: ReturnType<typeof displayDate>
   data: AppData
+  selection: number[] | null
+  onSelectionChange: Dispatch<SetStateAction<number[] | null>>
   onPrevious: () => void
   onNext: () => void
   onToday: () => void
-  onOpenHour: (hour: number) => void
+  onOpenHours: (hours: number[]) => void
   onOpenReview: () => void
 }) {
   const day = data.records[date] ?? {}
@@ -293,8 +312,14 @@ function RecordPage({ date, display, data, onPrevious, onNext, onToday, onOpenHo
   return <section className="record-page" aria-labelledby="record-title">
     <div className="record-main">
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
-      <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
-      <HourGrid key={date} date={date} day={day} onOpenHour={onOpenHour} />
+      <div className="record-summary-row">
+        <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
+        <button className={`select-mode-button ${selection ? 'select-mode-button-active' : ''}`} type="button" aria-pressed={selection !== null} onClick={() => onSelectionChange(selection ? null : [])}>
+          {selection ? '선택 끝내기' : '여러 칸 선택'}
+        </button>
+      </div>
+      <HourGrid key={date} date={date} day={day} selection={selection} onSelectionChange={onSelectionChange} onOpenHours={onOpenHours} />
+      {!selection && <p className="grid-hint">칸을 길게 누른 채 끌면 여러 칸을 한 번에 기록할 수 있어요.</p>}
       {categories.length > 0 && <div className="record-categories">
         <ul aria-label="기록한 카테고리">
           {categories.map((category) => <li key={category} style={categoryStyle(category)}>
@@ -303,6 +328,11 @@ function RecordPage({ date, display, data, onPrevious, onNext, onToday, onOpenHo
           </li>)}
         </ul>
         <button className="overview-link" type="button" onClick={onOpenReview}>하루 돌아보기 <span aria-hidden="true">→</span></button>
+      </div>}
+      {selection && <div className="selection-bar" role="region" aria-label="여러 칸 선택">
+        <p aria-live="polite">{selection.length ? <><strong>{selection.length}칸</strong> 선택</> : '칸을 누르거나 끌어서 고르세요'}</p>
+        <button className="ghost-button" type="button" onClick={() => onSelectionChange(null)}>취소</button>
+        <button className="save-entry" type="button" disabled={!selection.length} onClick={() => onOpenHours(selection)}>기록하기</button>
       </div>}
     </div>
     <aside className="day-context" aria-label="선택한 날짜 요약">
@@ -377,23 +407,134 @@ function DateHeader({ date, display, onPrevious, onNext, onToday }: {
   </div>
 }
 
-function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onOpenHour: (hour: number) => void }) {
+const LONG_PRESS_MS = 420
+const LONG_PRESS_SLOP = 8
+
+function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
+  date: string
+  day: DayRecord
+  selection: number[] | null
+  onSelectionChange: Dispatch<SetStateAction<number[] | null>>
+  onOpenHours: (hours: number[]) => void
+}) {
   const currentHour = isToday(date) ? new Date().getHours() : -1
-  return <div className="hour-grid" role="group" aria-label={`${date} 24시간 기록`}>
+  const gridRef = useRef<HTMLDivElement>(null)
+  const press = useRef<{ pointerId: number; hour: number; x: number; y: number; timer: number } | null>(null)
+  const drag = useRef<{ pointerId: number; anchor: number; base: Set<number>; adding: boolean } | null>(null)
+  const suppressClick = useRef(false)
+  const selected = new Set(selection ?? [])
+
+  // Once a long-press turns into a drag, stop the page from scrolling under the finger.
+  useEffect(() => {
+    const grid = gridRef.current
+    if (!grid) return
+    const onTouchMove = (event: TouchEvent) => { if (drag.current) event.preventDefault() }
+    grid.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => {
+      grid.removeEventListener('touchmove', onTouchMove)
+      if (press.current) window.clearTimeout(press.current.timer)
+    }
+  }, [])
+
+  const hourAt = (x: number, y: number): number | null => {
+    const cell = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-hour]')
+    return cell && gridRef.current?.contains(cell) ? Number(cell.dataset.hour) : null
+  }
+
+  const applyRange = (hour: number) => {
+    const current = drag.current
+    if (!current) return
+    const next = new Set(current.base)
+    for (let h = Math.min(current.anchor, hour); h <= Math.max(current.anchor, hour); h += 1) {
+      if (current.adding) next.add(h)
+      else next.delete(h)
+    }
+    onSelectionChange([...next].sort((a, b) => a - b))
+  }
+
+  const startDrag = (pointerId: number, hour: number, base: number[]) => {
+    const baseSet = new Set(base)
+    drag.current = { pointerId, anchor: hour, base: baseSet, adding: !baseSet.has(hour) }
+    applyRange(hour)
+  }
+
+  const cancelPress = () => {
+    if (press.current) window.clearTimeout(press.current.timer)
+    press.current = null
+  }
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLButtonElement>, hour: number) => {
+    suppressClick.current = false
+    if (!event.isPrimary || event.button > 0) return
+    if (selection) {
+      suppressClick.current = true
+      startDrag(event.pointerId, hour, selection)
+      return
+    }
+    const { pointerId, clientX, clientY } = event
+    cancelPress()
+    press.current = {
+      pointerId, hour, x: clientX, y: clientY,
+      timer: window.setTimeout(() => {
+        press.current = null
+        suppressClick.current = true
+        navigator.vibrate?.(12)
+        startDrag(pointerId, hour, [])
+      }, LONG_PRESS_MS),
+    }
+  }
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const pending = press.current
+    if (pending && pending.pointerId === event.pointerId && Math.hypot(event.clientX - pending.x, event.clientY - pending.y) > LONG_PRESS_SLOP) cancelPress()
+    if (drag.current?.pointerId !== event.pointerId) return
+    const hour = hourAt(event.clientX, event.clientY)
+    if (hour !== null) applyRange(hour)
+  }
+
+  const endPointer = () => {
+    cancelPress()
+    drag.current = null
+  }
+
+  const onCellClick = (hour: number) => {
+    if (suppressClick.current) { suppressClick.current = false; return }
+    if (!selection) { onOpenHours([hour]); return }
+    // Keyboard activation in select mode toggles a single cell.
+    onSelectionChange((current) => {
+      if (!current) return current
+      return current.includes(hour) ? current.filter((item) => item !== hour) : [...current, hour].sort((a, b) => a - b)
+    })
+  }
+
+  return <div
+    ref={gridRef}
+    className={`hour-grid ${selection ? 'hour-grid-selecting' : ''}`}
+    role="group"
+    aria-label={`${date} 24시간 기록`}
+    onPointerMove={onPointerMove}
+    onPointerUp={endPointer}
+    onPointerCancel={endPointer}
+    onContextMenu={(event) => event.preventDefault()}
+  >
     {hours().map((hour) => {
       const record = day[String(hour)]
       const segments: Activity[] = record ? [...record.segments] : []
       const categories = segments.map((activity) => CATEGORY_META[activity.category].label)
       const categoryLabel = categories.join(' · ')
       const descriptor = segments.length === 2 ? `함께 기록 ${categoryLabel}` : categoryLabel || '비어 있음'
+      const isSelected = selected.has(hour)
       return <button
         key={hour}
         type="button"
-        className={`hour-cell ${segments.length ? 'hour-cell-filled' : 'hour-cell-empty'} ${segments.length === 2 ? 'hour-cell-dual' : ''} ${currentHour === hour ? 'hour-cell-now' : ''}`}
+        data-hour={hour}
+        className={`hour-cell ${segments.length ? 'hour-cell-filled' : 'hour-cell-empty'} ${segments.length === 2 ? 'hour-cell-dual' : ''} ${currentHour === hour ? 'hour-cell-now' : ''} ${isSelected ? 'hour-cell-selected' : ''}`}
         style={{ ...(segments.length ? categoryPairStyle(segments.map((activity) => activity.category)) : {}), '--i': hour } as StyleVars}
-        aria-label={`${hourLabel(hour)}${currentHour === hour ? ' 지금' : ''} ${descriptor} ${segments.length ? '기록 수정' : '기록 추가'}`}
+        aria-label={`${hourLabel(hour)}${currentHour === hour ? ' 지금' : ''} ${descriptor} ${selection ? (isSelected ? '선택됨' : '선택 안 됨') : segments.length ? '기록 수정' : '기록 추가'}`}
+        aria-pressed={selection ? isSelected : undefined}
         aria-current={currentHour === hour ? 'time' : undefined}
-        onClick={() => onOpenHour(hour)}
+        onPointerDown={(event) => onPointerDown(event, hour)}
+        onClick={() => onCellClick(hour)}
       >
         <span className="hour-number">{pad(hour)}</span>
         {currentHour === hour && <span className="hour-now">지금</span>}
@@ -403,6 +544,7 @@ function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onO
           <span className="hour-icon-slot hour-icon-a" style={categoryStyle(segments[0].category)}><CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" /></span>
           <span className="hour-icon-slot hour-icon-b" style={categoryStyle(segments[1].category)}><CategoryIcon key={segments[1].category} category={segments[1].category} className="hour-icon" /></span>
         </>}
+        {isSelected && <span className="hour-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 8.4 2.6 2.6L12 5.4" /></svg></span>}
       </button>
     })}
   </div>
@@ -777,14 +919,19 @@ function NoticeToast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: nu
   return <div className={`notice notice-${notice.kind}`} data-closing={closing || undefined} role="status" aria-live="polite">{notice.text}</div>
 }
 
-function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
+function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onDelete }: {
   date: string
-  hour: number
-  record: HourRecord | undefined
+  hours: number[]
+  records: Array<HourRecord | undefined>
   onClose: () => void
   onSave: (activities: Activity[]) => boolean
   onDelete: () => boolean
 }) {
+  // Prefill only when every selected hour holds the same record; otherwise start blank.
+  const record = records.every((item) => JSON.stringify(item) === JSON.stringify(records[0])) ? records[0] : undefined
+  const hasRecord = records.some(Boolean)
+  const multiple = selectedHours.length > 1
+  const hourKey = selectedHours.join('-')
   const dialogRef = useRef<HTMLDialogElement>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
   const closeTimer = useRef<number | undefined>(undefined)
@@ -821,7 +968,8 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
     setClosingAttribute()
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const duration = reduced ? 140 : window.matchMedia('(max-width: 719px)').matches ? 180 : 160
-    closeTimer.current = window.setTimeout(() => dialog.close(), duration)
+    // Unmount from the timer rather than the dialog's close event, which some embedded browsers defer.
+    closeTimer.current = window.setTimeout(() => { dialog.close(); onClose() }, duration)
   }
 
   const setClosingAttribute = () => dialogRef.current?.setAttribute('data-closing', '')
@@ -839,37 +987,36 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
   }
   const categoryOptions = (slot: 1 | 2, selected: CategoryId | null) => <div className="category-options">
     {CATEGORY_IDS.map((category) => <label key={category} className={`category-option ${selected === category ? 'category-option-selected' : ''}`} style={categoryStyle(category)}>
-      <input className="visually-hidden" type="radio" name={`entry-category-${date}-${hour}-${slot}`} value={category} checked={selected === category} onChange={() => chooseCategory(slot, category)} />
+      <input className="visually-hidden" type="radio" name={`entry-category-${date}-${hourKey}-${slot}`} value={category} checked={selected === category} onChange={() => chooseCategory(slot, category)} />
       <CategoryIcon category={category} /><span>{CATEGORY_META[category].label}</span>
     </label>)}
   </div>
 
-  const titleId = `entry-dialog-title-${date}-${hour}`
+  const titleId = `entry-dialog-title-${date}-${hourKey}`
   return <dialog
     ref={dialogRef}
     className="entry-dialog"
     aria-labelledby={titleId}
     onCancel={(event) => { event.preventDefault(); close() }}
-    onClose={onClose}
   >
     <form className="entry-form" onSubmit={submit}>
-      <header className="dialog-heading"><div><span className="eyebrow">{displayDate(date).compact}</span><h2 id={titleId} ref={titleRef} tabIndex={-1}>{hourLabel(hour)} 기록</h2></div></header>
+      <header className="dialog-heading"><div><span className="eyebrow">{displayDate(date).compact}{multiple && ` · ${selectedHours.length}시간`}</span><h2 id={titleId} ref={titleRef} tabIndex={-1}>{hoursLabel(selectedHours)}</h2>{multiple && !isContiguous(selectedHours) && <p className="dialog-hours">{selectedHours.map(pad).join(', ')}시</p>}{multiple && hasRecord && !record && <p className="dialog-hours">고르면 선택한 칸의 기존 기록을 모두 바꿔요.</p>}</div></header>
       <fieldset className="activity-fieldset">
         <legend>{secondaryVisible ? '활동 1' : '무슨 일을 했나요?'}</legend>
         {categoryOptions(1, primary.category)}
         {memoVisible
-          ? <label className="memo-field" htmlFor={`entry-memo-${date}-${hour}-1`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hour}-1`} className="memo-input" value={primary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...primary, text: event.target.value }; setPrimary(next); persist(next, secondary) }} /></label>
+          ? <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-1`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hourKey}-1`} className="memo-input" value={primary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...primary, text: event.target.value }; setPrimary(next); persist(next, secondary) }} /></label>
           : primary.category && <button className="editor-option" type="button" onClick={() => setMemoVisible(true)}>+ 메모 추가</button>}
       </fieldset>
       {secondaryVisible && <fieldset className="activity-fieldset activity-fieldset-secondary">
         <legend>활동 2</legend>
         {categoryOptions(2, secondary.category)}
-        {memoVisible && secondary.category && <label className="memo-field" htmlFor={`entry-memo-${date}-${hour}-2`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hour}-2`} className="memo-input" value={secondary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...secondary, text: event.target.value }; setSecondary(next); persist(primary, next, true) }} /></label>}
+        {memoVisible && secondary.category && <label className="memo-field" htmlFor={`entry-memo-${date}-${hourKey}-2`}><span className="memo-label">메모</span><textarea id={`entry-memo-${date}-${hourKey}-2`} className="memo-input" value={secondary.text} maxLength={500} placeholder="무엇을 했나요?" onChange={(event) => { const next = { ...secondary, text: event.target.value }; setSecondary(next); persist(primary, next, true) }} /></label>}
         <button className="remove-secondary" type="button" onClick={() => { const empty = { category: null, text: '' }; setSecondary(empty); setSecondaryVisible(false); persist(primary, empty, false) }}>두 번째 활동 빼기</button>
       </fieldset>}
       {primary.category && !secondaryVisible && <button className="editor-option" type="button" onClick={() => setSecondaryVisible(true)}>+ 활동 하나 더</button>}
       <footer className="dialog-footer">
-        {record && <button className="delete-entry" type="button" onClick={() => { if (onDelete()) close(); else setSaveFailed(true) }}>이 시간 기록 삭제</button>}
+        {hasRecord && <button className="delete-entry" type="button" onClick={() => { if (onDelete()) close(); else setSaveFailed(true) }}>{multiple ? '선택한 칸 기록 삭제' : '이 시간 기록 삭제'}</button>}
         <span className={`save-status ${saveFailed ? 'save-status-error' : ''}`} role="status" aria-live="polite">{saveFailed ? '저장하지 못함' : primary.category ? '자동 저장됨' : '카테고리를 선택하면 저장돼요'}</span>
         <button className="save-entry" type="submit">완료</button>
       </footer>

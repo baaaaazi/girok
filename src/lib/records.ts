@@ -63,3 +63,7 @@ export function timeBlocks(day: DayRecord): TimeBlock[] {
   }
   return blocks
 }
+
+export function replaceHours(data: AppData, day: string, hours: number[], record: HourRecord | null): AppData {
+  return hours.reduce((next, hour) => replaceHour(next, day, hour, record), data)
+}
