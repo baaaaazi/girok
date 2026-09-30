@@ -179,9 +179,15 @@ h1, h2, h3, p { margin: 0; }
   text-align: left;
   transition: transform 120ms var(--ease-out), border-color 120ms ease, background-color 120ms ease;
 }
-.hour-cell-empty { background: color-mix(in srgb, var(--surface) 56%, transparent); }
-.hour-cell-filled { border-left: 2px solid var(--category); background: color-mix(in srgb, var(--category) 9%, var(--surface)); }
-.hour-cell-dual { border-left-color: var(--line-strong); background: var(--surface); }
+.hour-cell-empty { border-style: dashed; border-color: var(--line-strong); background: transparent; }
+.hour-cell-filled { border-color: color-mix(in srgb, var(--category) 34%, var(--line)); background: color-mix(in srgb, var(--category) 20%, var(--surface)); }
+.hour-cell-dual {
+  border-color: var(--line);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--category-a) 20%, var(--surface)) calc(50% - 0.5px),
+    color-mix(in srgb, var(--surface) 70%, transparent) calc(50% - 0.5px) calc(50% + 0.5px),
+    color-mix(in srgb, var(--category-b) 20%, var(--surface)) calc(50% + 0.5px));
+}
 .hour-number { position: absolute; top: 6px; left: 8px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1; }
 .hour-cell-filled .hour-number { color: var(--ink); font-weight: 650; }
 .hour-now { position: absolute; top: 4px; right: 5px; padding: 1px 5px; border-radius: 99px; background: var(--ink); color: var(--bg); font-size: 9px; font-weight: 650; line-height: 1.4; }
@@ -334,6 +340,7 @@ h2 { letter-spacing: -0.035em; font-size: 17px; font-weight: 620; line-height: 1
   .nav-item:hover, .settings-button:hover, .round-control:hover, .date-step:hover { background: var(--wash); color: var(--ink); }
   .hour-cell:hover { border-color: var(--line-strong); }
   .hour-cell-filled:hover { border-color: color-mix(in srgb, var(--category) 62%, var(--line)); }
+  .hour-cell-dual:hover { border-color: var(--line-strong); }
   .calendar-day:hover { border-color: var(--line); background: var(--surface); }
   .review-tab:hover, .editor-option:hover, .remove-secondary:hover, .delete-entry:hover { opacity: 0.75; }
   .theme-option:hover, .outline-button:hover, .ghost-button:hover { border-color: var(--line-strong); background: var(--wash); }

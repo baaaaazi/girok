@@ -387,21 +387,25 @@ function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onO
   </div>
 }
 
-function hourArcPath(hour: number, radius: number): string {
+const RING_RADIUS = 80
+const RING_WIDTH = 15
+const HOUR_GAP = 1.4
+const SPLIT_GAP = 0.6
+
+// `from`/`to` are in hours (e.g. 6.5 is the middle of the 06 slot); gaps are in degrees.
+function arcPath(from: number, to: number, startGap = HOUR_GAP / 2, endGap = HOUR_GAP / 2): string {
   const step = 360 / 24
-  const gap = 1.4
-  const start = (-90 + hour * step + gap / 2) * Math.PI / 180
-  const end = (-90 + (hour + 1) * step - gap / 2) * Math.PI / 180
-  const x1 = 120 + radius * Math.cos(start)
-  const y1 = 120 + radius * Math.sin(start)
-  const x2 = 120 + radius * Math.cos(end)
-  const y2 = 120 + radius * Math.sin(end)
-  return `M ${x1.toFixed(3)} ${y1.toFixed(3)} A ${radius} ${radius} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)}`
+  const start = (-90 + from * step + startGap) * Math.PI / 180
+  const end = (-90 + to * step - endGap) * Math.PI / 180
+  const x1 = 120 + RING_RADIUS * Math.cos(start)
+  const y1 = 120 + RING_RADIUS * Math.sin(start)
+  const x2 = 120 + RING_RADIUS * Math.cos(end)
+  const y2 = 120 + RING_RADIUS * Math.sin(end)
+  return `M ${x1.toFixed(3)} ${y1.toFixed(3)} A ${RING_RADIUS} ${RING_RADIUS} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)}`
 }
 
 function DayRing({ date, day, compact = false }: { date: string; day: DayRecord; compact?: boolean }) {
   const entries = reviewHours(day)
-  const entryByHour = new Map(entries.map((entry) => [entry.hour, entry.activities]))
   const count = entries.length
   const titleId = `ring-title-${date}-${compact ? 'compact' : 'full'}`
   const markerLabels = [
@@ -413,22 +417,14 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
 
   return <svg className={`day-ring ${compact ? 'day-ring-compact' : ''}`} viewBox="0 0 240 240" role="img" aria-labelledby={titleId}>
     <title id={titleId}>{displayDate(date).compact} · {count}시간 기록</title>
-    <desc>자정부터 시계 방향으로 한 시간씩 표시한 24시간 기록입니다. 함께 기록한 활동은 같은 시간 위치에 안쪽과 바깥쪽 두 선으로 나타냅니다.</desc>
-    {hours().map((hour) => {
-      const activities = entryByHour.get(hour)
-      return activities?.length === 2
-        ? <g key={`track-${hour}`}>
-            <path d={hourArcPath(hour, 88)} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
-            <path d={hourArcPath(hour, 72)} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
-          </g>
-        : <path key={`track-${hour}`} d={hourArcPath(hour, 80)} fill="none" stroke="var(--ring-track)" strokeWidth="15" />
-    })}
+    <desc>자정부터 시계 방향으로 한 시간씩 표시한 24시간 기록입니다. 함께 기록한 활동은 한 시간 칸을 반씩 나눠 나타냅니다.</desc>
+    {hours().map((hour) => <path key={`track-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke="var(--ring-track)" strokeWidth={RING_WIDTH} />)}
     {entries.map(({ hour, activities }) => activities.length === 2
       ? <g key={`hour-${hour}`}>
-          <path d={hourArcPath(hour, 88)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth="8" />
-          <path d={hourArcPath(hour, 72)} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth="8" />
+          <path d={arcPath(hour, hour + 0.5, HOUR_GAP / 2, SPLIT_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />
+          <path d={arcPath(hour + 0.5, hour + 1, SPLIT_GAP / 2, HOUR_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth={RING_WIDTH} />
         </g>
-      : <path key={`hour-${hour}`} d={hourArcPath(hour, 80)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth="15" />)}
+      : <path key={`hour-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
     <circle cx="120" cy="120" r="53" fill="var(--surface-raised)" />
     <text x="120" y="115" textAnchor="middle" className="ring-center-date">{displayDate(date).number}</text>
     <text x="120" y="137" textAnchor="middle" className="ring-center-count">{count}시간 기록</text>
