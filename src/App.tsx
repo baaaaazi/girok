@@ -962,7 +962,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
       </section>
       <section className="setting-section" aria-labelledby="backup-title">
         <div className="setting-heading">
-          <div><h2 id="backup-title">데이터 백업</h2><p>기록은 이 기기의 브라우저에만 저장돼요. 중요한 기록은 가끔 백업해 두세요.</p></div>
+          <div><h2 id="backup-title">데이터 백업</h2><p>기록은 {isNative ? '이 앱' : '이 기기의 브라우저'}에만 저장돼요. 중요한 기록은 가끔 백업해 두세요.</p></div>
           <span className="setting-count">{dateCount}일 · {hourCount}시간</span>
         </div>
         <div className="setting-actions">
@@ -973,7 +973,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
         <p className="setting-hint">girok 백업 파일이 아니면 가져오지 않으니 안심하세요.</p>
       </section>
       <section className="setting-section setting-danger" aria-labelledby="danger-title">
-        <div className="setting-heading"><div><h2 id="danger-title">기록 삭제</h2><p>모든 날짜의 기록을 이 브라우저에서 삭제해요.</p></div></div>
+        <div className="setting-heading"><div><h2 id="danger-title">기록 삭제</h2><p>모든 날짜의 기록을 {isNative ? '이 앱' : '이 브라우저'}에서 삭제해요.</p></div></div>
         {!clearArmed
           ? <button className="danger-button" type="button" onClick={onArmClear}>모든 기록 삭제</button>
           : <div className="clear-confirm" role="alert"><p>모든 기록을 영구 삭제할까요? 한 번 더 확인이 필요해요.</p><div className="clear-actions">
