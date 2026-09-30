@@ -36,3 +36,30 @@ export function presentCategories(presence: Record<CategoryId, number>): Categor
   // Most-recorded first; ties keep the CATEGORY_IDS order (sort is stable).
   return CATEGORY_IDS.filter((category) => presence[category] > 0).sort((a, b) => presence[b] - presence[a])
 }
+
+export type TimeBlock =
+  | { kind: 'record'; start: number; end: number; categories: CategoryId[]; notes: Array<{ hour: number; category: CategoryId; text: string }> }
+  | { kind: 'gap'; start: number; end: number }
+
+// Collapses consecutive hours with the same categories into one block; `end` is exclusive.
+// Empty stretches between records become gap blocks so the day reads as a continuous timeline.
+export function timeBlocks(day: DayRecord): TimeBlock[] {
+  const blocks: TimeBlock[] = []
+  const entries = reviewHours(day)
+  if (!entries.length) return blocks
+  let cursor = entries[0].hour
+  for (const { hour, activities } of entries) {
+    if (hour > cursor) blocks.push({ kind: 'gap', start: cursor, end: hour })
+    const categories = activities.map((activity) => activity.category)
+    const notes = activities.filter((activity) => activity.text).map((activity) => ({ hour, category: activity.category, text: activity.text }))
+    const last = blocks[blocks.length - 1]
+    if (last?.kind === 'record' && last.end === hour && last.categories.join() === categories.join()) {
+      last.end = hour + 1
+      last.notes.push(...notes)
+    } else {
+      blocks.push({ kind: 'record', start: hour, end: hour + 1, categories, notes })
+    }
+    cursor = hour + 1
+  }
+  return blocks
+}

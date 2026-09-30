@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
-import { categoryPresence, recordedHourCount, replaceHour, reviewHours } from '../src/lib/records.ts'
+import { categoryPresence, recordedHourCount, replaceHour, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 
@@ -119,5 +119,18 @@ assert.equal(bytes.get(STORAGE_KEY), JSON.stringify(EMPTY_DATA))
 assert.equal(bytes.has(LEGACY_STORAGE_KEY), false)
 assert.deepEqual(readData(), EMPTY_DATA)
 assert.deepEqual(EMPTY_DATA.records, {})
+
+assert.deepEqual(timeBlocks({}), [])
+assert.deepEqual(timeBlocks({
+  '1': { segments: [{ category: 'sleep', text: '' }] },
+  '2': { segments: [{ category: 'sleep', text: '꿈' }] },
+  '3': { segments: [{ category: 'sleep', text: '' }, { category: 'meal', text: '' }] },
+  '6': { segments: [{ category: 'study', text: '' }] },
+}), [
+  { kind: 'record', start: 1, end: 3, categories: ['sleep'], notes: [{ hour: 2, category: 'sleep', text: '꿈' }] },
+  { kind: 'record', start: 3, end: 4, categories: ['sleep', 'meal'], notes: [] },
+  { kind: 'gap', start: 4, end: 6 },
+  { kind: 'record', start: 6, end: 7, categories: ['study'], notes: [] },
+])
 
 console.log('self-check passed')

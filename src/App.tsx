@@ -17,7 +17,7 @@ import {
   todayKey,
   WEEKDAYS_SHORT,
 } from './lib/date'
-import { categoryPresence, presentCategories, recordedHourCount, replaceHour, reviewHours } from './lib/records'
+import { categoryPresence, presentCategories, recordedHourCount, replaceHour, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { CategoryIcon } from './icons'
@@ -44,14 +44,14 @@ function categoryStyle(category: CategoryId): StyleVars {
   return { '--category': CATEGORY_META[category].color }
 }
 
-function categoryPairStyle(segments: Activity[]): StyleVars {
-  return segments.length === 2
+function categoryPairStyle(categories: CategoryId[]): StyleVars {
+  return categories.length === 2
     ? {
-        '--category': CATEGORY_META[segments[0].category].color,
-        '--category-a': CATEGORY_META[segments[0].category].color,
-        '--category-b': CATEGORY_META[segments[1].category].color,
+        '--category': CATEGORY_META[categories[0]].color,
+        '--category-a': CATEGORY_META[categories[0]].color,
+        '--category-b': CATEGORY_META[categories[1]].color,
       }
-    : categoryStyle(segments[0].category)
+    : categoryStyle(categories[0])
 }
 
 function makeHourRecord(activities: Activity[]): HourRecord | null {
@@ -67,9 +67,18 @@ function reviewDates(date: string, mode: ReviewMode): string[] {
   return monthDays(parseDateKey(date) ?? new Date()).map(dateKey)
 }
 
+function monthDayLabel(key: string, withMonth = true): string {
+  const date = parseDateKey(key) ?? new Date()
+  return withMonth ? `${date.getMonth() + 1}월 ${date.getDate()}일` : `${date.getDate()}일`
+}
+
 function reviewRangeLabel(date: string, mode: ReviewMode, dates: string[]): string {
-  if (mode === 'day') return displayDate(date).compact
-  if (mode === 'week') return `${displayDate(dates[0]).compact} – ${displayDate(dates[dates.length - 1]).number}`
+  if (mode === 'day') return `${monthDayLabel(date)} ${displayDate(date).weekday}`
+  if (mode === 'week') {
+    const first = dates[0]
+    const last = dates[dates.length - 1]
+    return `${monthDayLabel(first)} – ${monthDayLabel(last, first.slice(0, 7) !== last.slice(0, 7))}`
+  }
   return monthTitle(parseDateKey(date) ?? new Date())
 }
 
@@ -77,10 +86,10 @@ function formatRangeTime(minutes: number): string {
   return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`
 }
 
-const NAV_ITEMS: Array<{ id: Page; label: string }> = [
-  { id: 'record', label: '기록' },
-  { id: 'calendar', label: '달력' },
-  { id: 'review', label: '돌아보기' },
+const NAV_ITEMS: Array<{ id: Page; label: string; icon: string }> = [
+  { id: 'record', label: '기록', icon: 'M5 4.5h4.5a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Zm9.5 0H19a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5ZM5 14h4.5a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-4.5A.5.5 0 0 1 5 14Zm9.5 0H19a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5v-4.5a.5.5 0 0 1 .5-.5Z' },
+  { id: 'calendar', label: '달력', icon: 'M5.5 5.5h13a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1ZM4.5 10h15M8.5 3.5v4m7-4v4' },
+  { id: 'review', label: '돌아보기', icon: 'M12 3.8a8.2 8.2 0 1 0 8.2 8.2M12 3.8V12h8.2M14.8 3.9a8.2 8.2 0 0 1 5.3 5.3' },
 ]
 
 export default function App() {
@@ -209,6 +218,7 @@ export default function App() {
             onModeChange={setReviewMode}
             onPrevious={() => navigateReview(-1)}
             onNext={() => navigateReview(1)}
+            onSelectDate={(next) => { setSelectedDate(next); navigate('record') }}
           />
         )}
         {page === 'settings' && (
@@ -259,7 +269,8 @@ function Navigation({ page, onNavigate }: { page: Page; onNavigate: (page: Page)
   return <div className="nav-items">
     {NAV_ITEMS.map((item) => (
       <button key={item.id} type="button" className={`nav-item ${page === item.id ? 'nav-item-active' : ''}`} aria-current={page === item.id ? 'page' : undefined} onClick={() => onNavigate(item.id)}>
-        {item.label}
+        <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={item.icon} /></svg>
+        <span>{item.label}</span>
       </button>
     ))}
   </div>
@@ -379,7 +390,7 @@ function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onO
         key={hour}
         type="button"
         className={`hour-cell ${segments.length ? 'hour-cell-filled' : 'hour-cell-empty'} ${segments.length === 2 ? 'hour-cell-dual' : ''} ${currentHour === hour ? 'hour-cell-now' : ''}`}
-        style={{ ...(segments.length ? categoryPairStyle(segments) : {}), '--i': hour } as StyleVars}
+        style={{ ...(segments.length ? categoryPairStyle(segments.map((activity) => activity.category)) : {}), '--i': hour } as StyleVars}
         aria-label={`${hourLabel(hour)}${currentHour === hour ? ' 지금' : ''} ${descriptor} ${segments.length ? '기록 수정' : '기록 추가'}`}
         aria-current={currentHour === hour ? 'time' : undefined}
         onClick={() => onOpenHour(hour)}
@@ -403,15 +414,22 @@ const HOUR_GAP = 1.4
 const SPLIT_GAP = 0.6
 
 // `from`/`to` are in hours (e.g. 6.5 is the middle of the 06 slot); gaps are in degrees.
-function arcPath(from: number, to: number, startGap = HOUR_GAP / 2, endGap = HOUR_GAP / 2): string {
+function arcPath(from: number, to: number, { center = 120, radius = RING_RADIUS, startGap = HOUR_GAP / 2, endGap = HOUR_GAP / 2 } = {}): string {
   const step = 360 / 24
   const start = (-90 + from * step + startGap) * Math.PI / 180
   const end = (-90 + to * step - endGap) * Math.PI / 180
-  const x1 = 120 + RING_RADIUS * Math.cos(start)
-  const y1 = 120 + RING_RADIUS * Math.sin(start)
-  const x2 = 120 + RING_RADIUS * Math.cos(end)
-  const y2 = 120 + RING_RADIUS * Math.sin(end)
-  return `M ${x1.toFixed(3)} ${y1.toFixed(3)} A ${RING_RADIUS} ${RING_RADIUS} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)}`
+  const x1 = center + radius * Math.cos(start)
+  const y1 = center + radius * Math.sin(start)
+  const x2 = center + radius * Math.cos(end)
+  const y2 = center + radius * Math.sin(end)
+  return `M ${x1.toFixed(3)} ${y1.toFixed(3)} A ${radius} ${radius} 0 0 1 ${x2.toFixed(3)} ${y2.toFixed(3)}`
+}
+
+function MiniRing({ day }: { day: DayRecord }) {
+  return <svg className="mini-ring" viewBox="0 0 32 32" aria-hidden="true">
+    <circle cx="16" cy="16" r="12" fill="none" stroke="var(--ring-track)" strokeWidth="5" />
+    {reviewHours(day).map(({ hour, activities }) => <path key={hour} d={arcPath(hour, hour + 1, { center: 16, radius: 12, startGap: 0, endGap: 0 })} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth="5" />)}
+  </svg>
 }
 
 function DayRing({ date, day, compact = false }: { date: string; day: DayRecord; compact?: boolean }) {
@@ -431,8 +449,8 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
     {hours().map((hour) => <path key={`track-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke="var(--ring-track)" strokeWidth={RING_WIDTH} />)}
     {entries.map(({ hour, activities }) => activities.length === 2
       ? <g key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars}>
-          <path d={arcPath(hour, hour + 0.5, HOUR_GAP / 2, SPLIT_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />
-          <path d={arcPath(hour + 0.5, hour + 1, SPLIT_GAP / 2, HOUR_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth={RING_WIDTH} />
+          <path d={arcPath(hour, hour + 0.5, { endGap: SPLIT_GAP / 2 })} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />
+          <path d={arcPath(hour + 0.5, hour + 1, { startGap: SPLIT_GAP / 2 })} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth={RING_WIDTH} />
         </g>
       : <path key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
     <circle cx="120" cy="120" r="53" fill="var(--surface-raised)" />
@@ -443,17 +461,15 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
 }
 
 function DayOverview({ date, day, records, onOpenReview }: { date: string; day: DayRecord; records: AppData['records']; onOpenReview: () => void }) {
-  const count = Object.keys(day).length
   const presence = categoryPresence(records, [date])
   const categories = presentCategories(presence)
   return <div className="day-overview">
-    <div className="overview-heading"><span className="eyebrow">이 날의 흐름</span><h2>{displayDate(date).compact}</h2></div>
+    <h2 className="overview-heading">{reviewRangeLabel(date, 'day', [date])}</h2>
     <DayRing date={date} day={day} compact />
-    <div className="overview-total"><strong>{count} / 24</strong><span>시간 기록</span></div>
     {categories.length ? <ul className="overview-categories" aria-label="기록한 카테고리">
       {categories.map((category) => <li key={category}>
         <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-        <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}개 시간대</span>
+        <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}시간</span>
       </li>)}
     </ul> : <p className="overview-empty">기록을 남기면 이곳에 하루의 흐름이 보여요.</p>}
     <button className="overview-link" type="button" onClick={onOpenReview}>하루 돌아보기 <span aria-hidden="true">→</span></button>
@@ -466,34 +482,27 @@ function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) 
   return <ul className="category-legend" aria-label="기록한 카테고리">
     {present.map((category) => <li key={category}>
       <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-      <span>{CATEGORY_META[category].label}</span><span>{presence[category]}개 시간대</span>
+      <span>{CATEGORY_META[category].label}</span><span>{presence[category]}시간</span>
     </li>)}
   </ul>
 }
 
-function ReviewPage({ date, data, mode, onModeChange, onPrevious, onNext }: {
+function ReviewPage({ date, data, mode, onModeChange, onPrevious, onNext, onSelectDate }: {
   date: string
   data: AppData
   mode: ReviewMode
   onModeChange: (mode: ReviewMode) => void
   onPrevious: () => void
   onNext: () => void
+  onSelectDate: (date: string) => void
 }) {
   const dates = reviewDates(date, mode)
   const rangeLabel = reviewRangeLabel(date, mode, dates)
   const modes: ReviewMode[] = ['day', 'week', 'month']
   const tabLabels: Record<ReviewMode, string> = { day: '하루', week: '7일', month: '월' }
-  const activeLabel = mode === 'day' ? '하루' : mode === 'week' ? '7일' : '월'
 
   return <section className="section-page review-page" aria-labelledby="review-title">
-    <header className="review-page-heading">
-      <div><span className="eyebrow">기록을 다시 보는 시간</span><h1 id="review-title">돌아보기</h1></div>
-      <div className="range-controls" aria-label={`${activeLabel} 범위 이동`}>
-        <button className="round-control" type="button" onClick={onPrevious} aria-label={`이전 ${activeLabel}`}>←</button>
-        <p aria-live="polite">{rangeLabel}</p>
-        <button className="round-control" type="button" onClick={onNext} aria-label={`다음 ${activeLabel}`}>→</button>
-      </div>
-    </header>
+    <h1 id="review-title" className="visually-hidden">돌아보기</h1>
     <div className="review-tabs" role="tablist" aria-label="돌아보기 범위" onKeyDown={(event) => {
       const direction = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
       if (!direction) return
@@ -504,16 +513,22 @@ function ReviewPage({ date, data, mode, onModeChange, onPrevious, onNext }: {
     }}>
       {modes.map((item) => <button key={item} id={`review-tab-${item}`} type="button" role="tab" aria-selected={mode === item} aria-controls="review-panel" tabIndex={mode === item ? 0 : -1} className={mode === item ? 'review-tab review-tab-active' : 'review-tab'} onClick={() => onModeChange(item)}>{tabLabels[item]}</button>)}
     </div>
-    <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`}>
+    <div className="range-controls" aria-label={`${tabLabels[mode]} 범위 이동`}>
+      <button className="step-control" type="button" onClick={onPrevious} aria-label={`이전 ${tabLabels[mode]}`}><span aria-hidden="true">‹</span></button>
+      <p aria-live="polite">{rangeLabel}</p>
+      <button className="step-control" type="button" onClick={onNext} aria-label={`다음 ${tabLabels[mode]}`}><span aria-hidden="true">›</span></button>
+    </div>
+    <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0]}`}>
       {mode === 'day'
         ? <DayReview date={date} day={data.records[date] ?? {}} />
-        : <RangeReview records={data.records} dates={dates} mode={mode} />}
+        : <RangeReview records={data.records} dates={dates} mode={mode} onSelectDate={onSelectDate} />}
     </div>
   </section>
 }
 
 function DayReview({ date, day }: { date: string; day: DayRecord }) {
-  const entries = reviewHours(day)
+  const blocks = timeBlocks(day)
+  const count = Object.keys(day).length
   const presence = categoryPresence({ [date]: day }, [date])
   const titleId = `activities-title-${date}`
   return <div className="day-review-layout">
@@ -522,45 +537,90 @@ function DayReview({ date, day }: { date: string; day: DayRecord }) {
       <CategoryLegend presence={presence} />
     </section>
     <section className="activity-review" aria-labelledby={titleId}>
-      <div className="subsection-heading"><h2 id={titleId}>시간별 기록</h2><span>{entries.length}시간</span></div>
-      {entries.length ? <ol className="activity-review-list">
-        {entries.map(({ hour, activities }) => <li className="activity-review-hour" key={hour}>
-          <time className="review-hour-time">{formatRangeTime(hour * 60)} – {formatRangeTime((hour + 1) * 60)}</time>
-          {activities.length === 1
-            ? <div className="single-review-activity">
-                <div className="activity-title"><span className="legend-icon" style={categoryStyle(activities[0].category)}><CategoryIcon category={activities[0].category} /></span><strong>{CATEGORY_META[activities[0].category].label}</strong></div>
-                {activities[0].text && <p>{activities[0].text}</p>}
+      <div className="subsection-heading"><h2 id={titleId}>하루 흐름</h2><span>{count}시간 기록</span></div>
+      {blocks.length ? <ol className="timeline">
+        {blocks.map((block, index) => {
+          const span = block.end - block.start
+          if (block.kind === 'gap') return <li className="timeline-gap" key={`gap-${block.start}`} style={{ '--i': index } as StyleVars}>
+            <time className="timeline-time">{formatRangeTime(block.start * 60)}</time>
+            <span className="timeline-gap-label">기록 없음 · {span}시간</span>
+          </li>
+          const labels = block.categories.map((category) => CATEGORY_META[category].label).join(' · ')
+          return <li className="timeline-block" key={`block-${block.start}`} style={{ ...categoryPairStyle(block.categories), '--span': span, '--i': index } as StyleVars}>
+            <time className="timeline-time">{formatRangeTime(block.start * 60)}<span>{formatRangeTime(block.end * 60)}</span></time>
+            <div className={`timeline-card ${block.categories.length === 2 ? 'timeline-card-dual' : ''}`}>
+              <div className="timeline-title">
+                <span className="timeline-icons">{block.categories.map((category, iconIndex) => <span key={`${category}-${iconIndex}`} className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>)}</span>
+                <strong>{labels}</strong>
+                <span className="timeline-duration">{span}시간</span>
               </div>
-            : <div className="dual-review-activity">
-                <span className="together-label">함께 기록</span>
-                <ul>{activities.map((activity, index) => <li key={`${activity.category}-${index}`}>
-                  <div className="activity-title"><span className="legend-icon" style={categoryStyle(activity.category)}><CategoryIcon category={activity.category} /></span><strong>{CATEGORY_META[activity.category].label}</strong></div>
-                  {activity.text && <p>{activity.text}</p>}
-                </li>)}</ul>
-              </div>}
-        </li>)}
+              {block.notes.length > 0 && <ul className="timeline-notes">
+                {block.notes.map((note, noteIndex) => <li key={`${note.hour}-${noteIndex}`}>{span > 1 && <span>{pad(note.hour)}시</span>}{note.text}</li>)}
+              </ul>}
+            </div>
+          </li>
+        })}
       </ol> : <p className="activity-empty">이 날짜에는 아직 기록이 없어요.</p>}
     </section>
   </div>
 }
 
-function RangeReview({ records, dates, mode }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month' }) {
-  const hoursRecorded = recordedHourCount(records, dates)
+function RangeReview({ records, dates, mode, onSelectDate }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+  const total = recordedHourCount(records, dates)
+  const recordedDays = dates.filter((date) => Object.keys(records[date] ?? {}).length > 0).length
   const presence = categoryPresence(records, dates)
   const present = presentCategories(presence)
+  const presenceTotal = present.reduce((sum, category) => sum + presence[category], 0)
   return <section className="range-review" aria-label={mode === 'week' ? '7일 돌아보기' : '월 돌아보기'}>
-    <div className="range-total"><strong>{hoursRecorded}</strong><span>고유 기록 시간</span></div>
-    <p className="range-note">카테고리 수는 해당 활동이 등장한 시간대 수예요. 함께 기록한 활동은 각각 세고, 같은 카테고리가 한 시간대에 두 번 있어도 한 번만 셉니다.</p>
-    <section className="presence-section" aria-labelledby="presence-title">
-      <div className="subsection-heading"><h2 id="presence-title">카테고리가 등장한 시간</h2><span>{present.length}개</span></div>
-      {present.length ? <ul className="presence-list">
-        {present.map((category) => <li key={category}>
-          <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-          <span>{CATEGORY_META[category].label}</span><strong>{presence[category]}<span>개 시간대</span></strong>
-        </li>)}
-      </ul> : <p className="activity-empty">이 기간에는 아직 기록이 없어요.</p>}
-    </section>
+    <dl className="range-stats">
+      <div><dt>기록한 시간</dt><dd>{total}<span>시간</span></dd></div>
+      <div><dt>기록한 날</dt><dd>{recordedDays}<span>/ {dates.length}일</span></dd></div>
+      <div><dt>하루 평균</dt><dd>{recordedDays ? Math.round(total / recordedDays * 10) / 10 : 0}<span>시간</span></dd></div>
+    </dl>
+    {present.length ? <>
+      <section className="range-card" aria-labelledby="share-title">
+        <h2 id="share-title">무엇을 했나요</h2>
+        <div className="share-bar" aria-hidden="true">
+          {present.map((category) => <span key={category} style={{ ...categoryStyle(category), flexGrow: presence[category] }} />)}
+        </div>
+        <ul className="share-list">
+          {present.map((category) => <li key={category} style={categoryStyle(category)}>
+            <CategoryIcon category={category} />
+            <span className="share-label">{CATEGORY_META[category].label}</span>
+            <strong>{presence[category]}시간</strong>
+            <span className="share-percent">{Math.round(presence[category] / presenceTotal * 100)}%</span>
+          </li>)}
+        </ul>
+      </section>
+      <section className="range-card" aria-labelledby="matrix-title">
+        <div className="range-card-heading"><h2 id="matrix-title">시간표</h2><span>줄을 누르면 그날 기록으로 가요</span></div>
+        <HourMatrix records={records} dates={dates} mode={mode} onSelectDate={onSelectDate} />
+      </section>
+    </> : <p className="activity-empty">이 기간에는 아직 기록이 없어요.</p>}
   </section>
+}
+
+function HourMatrix({ records, dates, mode, onSelectDate }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+  return <div className={`hour-matrix hour-matrix-${mode}`}>
+    <div className="matrix-axis" aria-hidden="true">
+      {[0, 6, 12, 18].map((hour) => <span key={hour} style={{ gridColumn: hour + 2 }}>{pad(hour)}</span>)}
+    </div>
+    {dates.map((key, index) => {
+      const day = records[key] ?? {}
+      const date = parseDateKey(key) ?? new Date()
+      const weekday = date.getDay()
+      return <button key={key} type="button" className="matrix-row" style={{ '--i': index } as StyleVars} onClick={() => onSelectDate(key)} aria-label={`${monthDayLabel(key)} ${WEEKDAYS_SHORT[weekday]}요일, ${Object.keys(day).length}시간 기록. 기록 열기`}>
+        <span className={`matrix-label ${weekday === 0 ? 'weekday-sun' : weekday === 6 ? 'weekday-sat' : ''} ${isToday(key) ? 'matrix-label-today' : ''}`}>
+          {mode === 'week' && <span>{WEEKDAYS_SHORT[weekday]}</span>}{date.getDate()}
+        </span>
+        {hours().map((hour) => {
+          const record = day[String(hour)]
+          const categories = record?.segments.map((activity) => activity.category) ?? []
+          return <span key={hour} className={`matrix-cell ${categories.length === 2 ? 'matrix-cell-dual' : ''}`} style={categories.length ? categoryPairStyle(categories) : undefined} data-filled={categories.length ? '' : undefined} />
+        })}
+      </button>
+    })}
+  </div>
 }
 
 function CalendarPage({ cursor, selectedDate, data, onPrevious, onNext, onSelectDate }: {
@@ -575,38 +635,61 @@ function CalendarPage({ cursor, selectedDate, data, onPrevious, onNext, onSelect
   const monthPrefix = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}`
   const recordedDays = Object.entries(data.records).filter(([key, day]) => key.startsWith(monthPrefix) && Object.keys(day).length > 0).length
   return <section className="section-page calendar-page" aria-labelledby="calendar-title">
-    <header className="section-heading-row">
-      <div><span className="eyebrow">날짜를 찾아볼 때</span><h1 id="calendar-title">달력</h1></div>
+    <header className="page-header">
+      <div>
+        <h1 id="calendar-title">{monthTitle(cursor)}</h1>
+        <p className="page-header-meta">{recordedDays}일 기록</p>
+      </div>
       <div className="month-controls" aria-label="월 이동">
-        <button className="round-control" type="button" onClick={onPrevious} aria-label="이전 달">←</button>
-        <button className="round-control" type="button" onClick={onNext} aria-label="다음 달">→</button>
+        <button className="step-control" type="button" onClick={onPrevious} aria-label="이전 달"><span aria-hidden="true">‹</span></button>
+        <button className="step-control" type="button" onClick={onNext} aria-label="다음 달"><span aria-hidden="true">›</span></button>
       </div>
     </header>
-    <div className="month-title-row"><h2>{monthTitle(cursor)}</h2><span>{recordedDays}일 기록</span></div>
-    <div className="calendar-grid calendar-weekdays" aria-hidden="true">{WEEKDAYS_SHORT.map((weekday) => <span key={weekday}>{weekday}</span>)}</div>
-    <div className="calendar-grid calendar-days">
+    <div className="calendar-grid calendar-weekdays" aria-hidden="true">{WEEKDAYS_SHORT.map((weekday, index) => <span key={weekday} className={index === 0 ? 'weekday-sun' : index === 6 ? 'weekday-sat' : ''}>{weekday}</span>)}</div>
+    <div className="calendar-grid calendar-days" key={monthPrefix}>
       {cells.map((date, index) => {
         if (!date) return <span className="calendar-empty" key={`empty-${index}`} aria-hidden="true" />
         const key = dateKey(date)
-        const count = Object.keys(data.records[key] ?? {}).length
+        const day = data.records[key] ?? {}
+        const count = Object.keys(day).length
         const current = key === selectedDate
         const today = isToday(key)
-        const markWidth = count >= 13 ? 20 : count >= 6 ? 14 : 8
+        const weekday = date.getDay()
         return <button
           type="button"
           className={`calendar-day ${current ? 'calendar-day-selected' : ''} ${today ? 'calendar-day-today' : ''}`}
           key={key}
-          aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS_SHORT[date.getDay()]}요일${count ? `, ${count}시간 기록` : ', 기록 없음'}`}
+          style={{ '--i': index } as StyleVars}
+          aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS_SHORT[weekday]}요일${count ? `, ${count}시간 기록` : ', 기록 없음'}`}
           aria-pressed={current}
           aria-current={today ? 'date' : undefined}
           onClick={() => onSelectDate(key)}
         >
-          <span>{date.getDate()}</span>
-          {count > 0 && <span className="coverage-mark" style={{ '--coverage-width': `${markWidth}px` } as StyleVars} aria-hidden="true" />}
+          <span className={`calendar-date ${weekday === 0 ? 'weekday-sun' : weekday === 6 ? 'weekday-sat' : ''}`}>{date.getDate()}</span>
+          {count > 0 ? <MiniRing day={day} /> : <span className="mini-ring-empty" aria-hidden="true" />}
         </button>
       })}
     </div>
-    <p className="calendar-hint">날짜를 선택하면 해당 기록을 바로 열어요.</p>
+    <MonthSummary records={data.records} dates={monthDays(cursor).map(dateKey)} />
+  </section>
+}
+
+function MonthSummary({ records, dates }: { records: AppData['records']; dates: string[] }) {
+  const presence = categoryPresence(records, dates)
+  const present = presentCategories(presence)
+  if (!present.length) return null
+  const total = recordedHourCount(records, dates)
+  return <section className="range-card month-summary" aria-labelledby="month-summary-title">
+    <div className="range-card-heading"><h2 id="month-summary-title">이번 달 한눈에</h2><span>{total}시간 기록</span></div>
+    <div className="share-bar" aria-hidden="true">
+      {present.map((category) => <span key={category} style={{ ...categoryStyle(category), flexGrow: presence[category] }} />)}
+    </div>
+    <ul className="month-summary-legend">
+      {present.map((category) => <li key={category}>
+        <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
+        {CATEGORY_META[category].label} <strong>{presence[category]}</strong>
+      </li>)}
+    </ul>
   </section>
 }
 
@@ -647,7 +730,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
   }
 
   return <section className="section-page settings-page" aria-labelledby="settings-title">
-    <div className="section-heading-row"><div><span className="eyebrow">앱과 기록 관리</span><h1 id="settings-title">설정</h1></div></div>
+    <header className="page-header"><h1 id="settings-title">설정</h1></header>
     <div className="settings-stack">
       <section className="setting-section" aria-labelledby="appearance-title">
         <div className="setting-heading"><div><h2 id="appearance-title">화면</h2><p>눈에 편한 분위기를 선택해요.</p></div></div>
@@ -669,7 +752,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
           <button className="outline-button" type="button" onClick={() => fileInput.current?.click()}>백업 파일 가져오기</button>
           <input ref={fileInput} className="visually-hidden" type="file" tabIndex={-1} accept="application/json,.json" aria-label="가져올 백업 파일 선택" onChange={importData} />
         </div>
-        <p className="setting-hint">v1·v2 형식을 확인하며, 잘못된 파일은 현재 데이터를 바꾸지 않아요.</p>
+        <p className="setting-hint">girok 백업 파일이 아니면 가져오지 않으니 안심하세요.</p>
       </section>
       <section className="setting-section setting-danger" aria-labelledby="danger-title">
         <div className="setting-heading"><div><h2 id="danger-title">기록 삭제</h2><p>모든 날짜의 기록을 이 브라우저에서 삭제해요.</p></div></div>
@@ -681,7 +764,6 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
             </div></div>}
       </section>
     </div>
-    <p className="settings-footnote">girok는 서버 없이 작동하며, 기록은 이 브라우저의 localStorage에만 남아요.</p>
   </section>
 }
 
