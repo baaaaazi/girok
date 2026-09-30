@@ -46,4 +46,4 @@ Pushing to `main` deploys to https://baaaaazi.github.io/girok/ via `.github/work
 
 ## In-progress work
 
-`ROUTINE_PLAN.md` is the agreed routine roadmap. Step 1 (the 루틴 tab) is done; next is step 2: routine completion on the calendar, completion rate in review, and the nearest D-day on the record page. Routines must stay under their own key and must not change the `girok:data:v2` format.
+`ROUTINE_PLAN.md` is the agreed routine roadmap. Steps 1 (the 루틴 tab) and 2 (calendar dot, review completion rates, record-page D-day chip) are done; next is step 3: user-scheduled notifications (Capacitor Local Notifications, APK first). Routines must stay under their own key and must not change the `girok:data:v2` format.

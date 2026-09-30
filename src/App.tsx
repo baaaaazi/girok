@@ -19,10 +19,10 @@ import {
 } from './lib/date'
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
-import { EMPTY_ROUTINE_DATA, clearRoutineData, readRoutineData, writeRoutineData } from './lib/routines'
-import type { RoutineData } from './types/routine'
+import { EMPTY_ROUTINE_DATA, clearRoutineData, dayComplete, dayProgress, ddayLabel, nearestGoal, readRoutineData, routineRates, writeRoutineData } from './lib/routines'
+import { ROUTINE_COLORS, type Goal, type RoutineData } from './types/routine'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
-import { CategoryIcon } from './icons'
+import { CategoryIcon, RoutineIcon } from './icons'
 import { exitApp, isNative, listenBackButton, shareBackup } from './native'
 import { RoutinePage } from './RoutinePage'
 
@@ -282,6 +282,8 @@ export default function App() {
             onSelectionChange={setSelection}
             onOpenHours={setEditorHours}
             onOpenReview={() => { setReviewMode('day'); navigate('review') }}
+            goal={nearestGoal(routineData.goals, todayKey())}
+            onOpenRoutine={() => navigate('routine')}
           />
         )}
         {page === 'routine' && (
@@ -300,6 +302,7 @@ export default function App() {
             cursor={monthCursor}
             selectedDate={selectedDate}
             data={data}
+            routineData={routineData}
             onPrevious={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
             onNext={() => setMonthCursor((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
             onSelectDate={(next) => { setSelectedDate(next); navigate('record') }}
@@ -309,6 +312,7 @@ export default function App() {
           <ReviewPage
             date={selectedDate}
             data={data}
+            routineData={routineData}
             mode={reviewMode}
             onModeChange={setReviewMode}
             onPrevious={() => navigateReview(-1)}
@@ -378,10 +382,11 @@ function Navigation({ page, onNavigate }: { page: Page; onNavigate: (page: Page)
   </div>
 }
 
-function RecordPage({ date, display, data, selection, showMultiHint, onSelectionChange, onPrevious, onNext, onToday, onOpenHours, onOpenReview }: {
+function RecordPage({ date, display, data, goal, selection, showMultiHint, onSelectionChange, onPrevious, onNext, onToday, onOpenHours, onOpenReview, onOpenRoutine }: {
   date: string
   display: ReturnType<typeof displayDate>
   data: AppData
+  goal: Goal | null
   selection: number[] | null
   showMultiHint: boolean
   onSelectionChange: Dispatch<SetStateAction<number[] | null>>
@@ -390,6 +395,7 @@ function RecordPage({ date, display, data, selection, showMultiHint, onSelection
   onToday: () => void
   onOpenHours: (hours: number[]) => void
   onOpenReview: () => void
+  onOpenRoutine: () => void
 }) {
   const day = data.records[date] ?? {}
   const recordedHours = Object.keys(day).length
@@ -398,6 +404,7 @@ function RecordPage({ date, display, data, selection, showMultiHint, onSelection
   return <section className="record-page" aria-labelledby="record-title">
     <div className={`record-main ${selection ? 'record-main-selecting' : ''}`}>
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
+      {goal && <DdayChip goal={goal} onOpen={onOpenRoutine} />}
       <div className="record-summary-row">
         <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
         <button className={`select-mode-button ${selection ? 'select-mode-button-active' : ''}`} type="button" aria-pressed={selection !== null} onClick={() => onSelectionChange(selection ? null : [])}>
@@ -425,6 +432,15 @@ function RecordPage({ date, display, data, selection, showMultiHint, onSelection
       <DayOverview date={date} day={day} records={data.records} onOpenReview={onOpenReview} />
     </aside>
   </section>
+}
+
+function DdayChip({ goal, onOpen }: { goal: Goal; onOpen: () => void }) {
+  const label = ddayLabel(goal, todayKey())
+  return <div className="record-dday">
+    <button type="button" className="dday-chip" onClick={onOpen} aria-label={`${goal.name} ${label}, 루틴 탭 열기`}>
+      <span className="dday-chip-name">{goal.name}</span><strong>{label}</strong>
+    </button>
+  </div>
 }
 
 function DateHeader({ date, display, onPrevious, onNext, onToday }: {
@@ -727,9 +743,10 @@ function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) 
   </ul>
 }
 
-function ReviewPage({ date, data, mode, onModeChange, onPrevious, onNext, onSelectDate }: {
+function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, onNext, onSelectDate }: {
   date: string
   data: AppData
+  routineData: RoutineData
   mode: ReviewMode
   onModeChange: (mode: ReviewMode) => void
   onPrevious: () => void
@@ -760,13 +777,14 @@ function ReviewPage({ date, data, mode, onModeChange, onPrevious, onNext, onSele
     </div>
     <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0]}`}>
       {mode === 'day'
-        ? <DayReview date={date} day={data.records[date] ?? {}} />
-        : <RangeReview records={data.records} dates={dates} mode={mode} onSelectDate={onSelectDate} />}
+        ? <DayReview date={date} day={data.records[date] ?? {}} routineData={routineData} />
+        : <RangeReview records={data.records} routineData={routineData} dates={dates} mode={mode} onSelectDate={onSelectDate} />}
     </div>
   </section>
 }
 
-function DayReview({ date, day }: { date: string; day: DayRecord }) {
+function DayReview({ date, day, routineData }: { date: string; day: DayRecord; routineData: RoutineData }) {
+  const routines = dayProgress(routineData, date)
   const blocks = timeBlocks(day)
   const count = Object.keys(day).length
   const presence = categoryPresence({ [date]: day }, [date])
@@ -775,6 +793,9 @@ function DayReview({ date, day }: { date: string; day: DayRecord }) {
     <section className="ring-panel" aria-label="24시간 기록">
       <DayRing date={date} day={day} />
       <CategoryLegend presence={presence} />
+      {routines.total > 0 && <p className="review-routine-line" data-complete={routines.done === routines.total ? '' : undefined}>
+        루틴 <strong>{routines.done}/{routines.total}</strong> 완료
+      </p>}
     </section>
     <section className="activity-review" aria-labelledby={titleId}>
       <div className="subsection-heading"><h2 id={titleId}>하루 흐름</h2><span>{count}시간 기록</span></div>
@@ -805,7 +826,7 @@ function DayReview({ date, day }: { date: string; day: DayRecord }) {
   </div>
 }
 
-function RangeReview({ records, dates, mode, onSelectDate }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+function RangeReview({ records, routineData, dates, mode, onSelectDate }: { records: AppData['records']; routineData: RoutineData; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
   const total = recordedHourCount(records, dates)
   const recordedDays = dates.filter((date) => Object.keys(records[date] ?? {}).length > 0).length
   const presence = categoryPresence(records, dates)
@@ -837,6 +858,27 @@ function RangeReview({ records, dates, mode, onSelectDate }: { records: AppData[
         <HourMatrix records={records} dates={dates} mode={mode} onSelectDate={onSelectDate} />
       </section>
     </> : <p className="activity-empty">이 기간에는 아직 기록이 없어요.</p>}
+    <RoutineRates routineData={routineData} dates={dates} />
+  </section>
+}
+
+function RoutineRates({ routineData, dates }: { routineData: RoutineData; dates: string[] }) {
+  const rates = routineRates(routineData, dates, todayKey())
+  if (!rates.length) return null
+  return <section className="range-card" aria-labelledby="routine-rates-title">
+    <h2 id="routine-rates-title">루틴 달성</h2>
+    <ul className="rate-list">
+      {rates.map(({ routine, done, total }, index) => {
+        const percent = Math.round(done / total * 100)
+        return <li key={routine.id} style={{ '--category': ROUTINE_COLORS[routine.color], '--i': index } as StyleVars}>
+          <span className="rate-icon"><RoutineIcon icon={routine.icon} /></span>
+          <div className="rate-body">
+            <p><span className="rate-name">{routine.name}</span><span className="rate-count">{done}/{total} · <strong>{percent}%</strong></span></p>
+            <span className="rate-track" aria-hidden="true"><span style={{ transform: `scaleX(${done / total})` }} /></span>
+          </div>
+        </li>
+      })}
+    </ul>
   </section>
 }
 
@@ -863,10 +905,11 @@ function HourMatrix({ records, dates, mode, onSelectDate }: { records: AppData['
   </div>
 }
 
-function CalendarPage({ cursor, selectedDate, data, onPrevious, onNext, onSelectDate }: {
+function CalendarPage({ cursor, selectedDate, data, routineData, onPrevious, onNext, onSelectDate }: {
   cursor: Date
   selectedDate: string
   data: AppData
+  routineData: RoutineData
   onPrevious: () => void
   onNext: () => void
   onSelectDate: (date: string) => void
@@ -895,18 +938,20 @@ function CalendarPage({ cursor, selectedDate, data, onPrevious, onNext, onSelect
         const current = key === selectedDate
         const today = isToday(key)
         const weekday = date.getDay()
+        const routinesDone = dayComplete(routineData, key)
         return <button
           type="button"
           className={`calendar-day ${current ? 'calendar-day-selected' : ''} ${today ? 'calendar-day-today' : ''}`}
           key={key}
           style={{ '--i': index } as StyleVars}
-          aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS_SHORT[weekday]}요일${count ? `, ${count}시간 기록` : ', 기록 없음'}`}
+          aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 ${WEEKDAYS_SHORT[weekday]}요일${count ? `, ${count}시간 기록` : ', 기록 없음'}${routinesDone ? ', 루틴 모두 완료' : ''}`}
           aria-pressed={current}
           aria-current={today ? 'date' : undefined}
           onClick={() => onSelectDate(key)}
         >
           <span className={`calendar-date ${weekday === 0 ? 'weekday-sun' : weekday === 6 ? 'weekday-sat' : ''}`}>{date.getDate()}</span>
           {count > 0 ? <MiniRing day={day} /> : <span className="mini-ring-empty" aria-hidden="true" />}
+          {routinesDone && <span className="routine-dot" aria-hidden="true" />}
         </button>
       })}
     </div>

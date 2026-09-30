@@ -188,6 +188,11 @@ h1, h2, h3, p { margin: 0; }
 .date-meta-line { display: flex; align-items: center; gap: 6px; }
 .today-link { position: relative; padding: 1px 8px; border: 0; border-radius: 99px; background: var(--ink); color: var(--bg); font-size: 11px; font-weight: 700; line-height: 1.5; }
 .today-link::after { position: absolute; inset: -12px -6px; content: ''; }
+.record-dday { display: flex; max-width: 560px; justify-content: center; margin: 4px auto 0; }
+.dday-chip { position: relative; display: inline-flex; max-width: 100%; min-height: 30px; align-items: center; gap: 6px; padding: 0 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface-raised); color: var(--ink); cursor: pointer; font-size: 12px; }
+.dday-chip::after { position: absolute; inset: -7px 0; content: ''; }
+.dday-chip-name { min-width: 0; overflow: hidden; color: var(--muted); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.dday-chip strong { flex: none; font-weight: 760; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .record-summary-row { display: flex; max-width: 560px; align-items: center; justify-content: space-between; gap: 12px; margin: 12px auto 0; }
 .record-summary { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font-size: 12px; }
 .select-mode-button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 99px; background: transparent; color: var(--ink); cursor: pointer; font-size: 13px; font-weight: 600; transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease; }
@@ -276,11 +281,12 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .calendar-weekdays { margin-top: 18px; padding: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
 .calendar-day, .calendar-empty { min-width: 0; min-height: 66px; }
-.calendar-day { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ink); animation: cell-in 300ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 8ms); }
+.calendar-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 6px 0 8px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--ink); animation: cell-in 300ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 8ms); }
 .calendar-date { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .calendar-day-today .calendar-date { background: var(--ink); color: var(--bg); }
 .calendar-day-selected { border-color: var(--line-strong); background: var(--surface); }
 .mini-ring { display: block; width: 28px; height: 28px; }
+.routine-dot { position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--ink); animation: icon-pop 280ms var(--ease-pop) backwards; animation-delay: calc(var(--i, 0) * 8ms + 120ms); }
 .mini-ring-empty { display: block; width: 28px; height: 28px; border: 1px dashed var(--line-strong); border-radius: 50%; transform: scale(0.72); }
 
 /* Review header */
@@ -357,6 +363,19 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .matrix-cell-dual[data-filled] { background: linear-gradient(to bottom right, var(--category-a) 50%, var(--category-b) 50%); }
 @keyframes bar-in { from { transform: scaleX(0); } }
 .month-summary { margin-top: 16px; }
+.review-routine-line { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; text-align: center; }
+.review-routine-line strong { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rate-list { display: grid; gap: 14px; margin: 14px 0 2px; padding: 0; list-style: none; }
+.rate-list li { display: flex; align-items: center; gap: 10px; animation: cell-in 300ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 30ms); }
+.rate-icon { display: grid; width: 30px; height: 30px; flex: none; place-items: center; border-radius: 9px; background: var(--cat-fill-color); }
+.rate-icon .category-icon { width: 17px; height: 17px; }
+.rate-body { min-width: 0; flex: 1; }
+.rate-body p { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 13px; }
+.rate-name { min-width: 0; overflow: hidden; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.rate-count { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.rate-count strong { color: var(--ink); font-weight: 700; }
+.rate-track { display: block; height: 6px; margin-top: 6px; overflow: hidden; border-radius: 99px; background: var(--ring-track); }
+.rate-track span { display: block; height: 100%; border-radius: inherit; background: var(--category); transform-origin: left; animation: bar-in 520ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 30ms + 80ms); }
 .month-summary .share-bar { margin-top: 12px; }
 .month-summary-legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 12px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
 .month-summary-legend li { display: flex; align-items: center; gap: 5px; }
@@ -643,7 +662,7 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
-  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note { animation: none; }
+  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span { animation: none; }
   .routine-progress-track span, .routine-check svg { transition: none; }
   button.routine-toggle:not(:disabled):active .routine-check, .icon-option:active, .color-option-selected, .icon-option-selected .category-icon { transform: none; }
   .entry-dialog, .entry-dialog[data-closing] { transform: none; transition-duration: 140ms; }

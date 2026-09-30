@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
 import { categoryPresence, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { CORRUPT_BACKUP_KEY, EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
-import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayProgress, ddayLabel, isDue, readRoutineData, removeRoutine, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
+import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete, dayProgress, ddayLabel, isDue, nearestGoal, readRoutineData, removeRoutine, routineRates, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
 import { backupFile } from '../src/lib/storage.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
@@ -182,6 +182,23 @@ routineData = toggleCheck(routineData, '2026-10-01', 'r')
 assert.equal(streak(routineData, read, '2026-10-01'), 3)
 assert.deepEqual(dayProgress(routineData, '2026-09-30'), { done: 2, total: 3 })
 
+// Calendar dot: every daily/weekday routine due that day is done; weekly ones only count when checked.
+assert.equal(dayComplete(routineData, '2026-09-30'), true) // water and gym done, weekly read not needed
+assert.equal(dayComplete(routineData, '2026-09-29'), true) // gym not due on Tuesday
+assert.equal(dayComplete(routineData, '2026-10-01'), false) // water missed
+assert.equal(dayComplete(routineData, '2026-09-19'), false) // nothing existed yet
+const weeklyOnly: RoutineData = { ...routineData, routines: [read] }
+assert.equal(dayComplete(weeklyOnly, '2026-09-28'), true)
+assert.equal(dayComplete(weeklyOnly, '2026-09-29'), false)
+
+// Review rates: due days up to today; weekly routines use the weekly target scaled to the days counted.
+const lastWeek = Array.from({ length: 7 }, (_, index) => shiftDate('2026-10-01', index - 6))
+const rates = (dates: string[], today: string) => routineRates(routineData, dates, today).map(({ routine, done, total }) => [routine.id, done, total])
+assert.deepEqual(rates(lastWeek, '2026-10-01'), [['w', 3, 7], ['g', 2, 3], ['r', 2, 2]])
+assert.deepEqual(rates(lastWeek, '2026-09-29'), [['w', 2, 5], ['g', 1, 2], ['r', 1, 1]]) // later days are not counted yet
+assert.deepEqual(rates(['2026-09-14', '2026-09-15', '2026-09-16', '2026-09-17'], '2026-10-01'), [['r', 1, 1]]) // extra checks cap at the target; others did not exist yet
+assert.deepEqual(rates(['2026-10-05'], '2026-10-01'), [])
+
 routineData = removeRoutine(routineData, 'w')
 assert.equal(routineData.routines.some((routine) => routine.id === 'w'), false)
 assert.equal(Object.values(routineData.checks).some((ids) => ids.includes('w')), false)
@@ -194,6 +211,9 @@ assert.equal(ddayLabel(goal('a', '2026-09-28'), '2026-10-01'), 'D+3')
 assert.equal(ddayLabel(goal('a', null), '2026-10-01'), '목표')
 assert.equal(ddayLabel(goal('a', '2027-03-28'), '2026-10-25'), 'D-154') // spans a DST change in some zones
 assert.deepEqual(sortedGoals([goal('open', null), goal('far', '2026-12-01'), goal('near', '2026-10-05')]).map((item) => item.id), ['near', 'far', 'open'])
+assert.equal(nearestGoal([goal('open', null), goal('past', '2026-09-30'), goal('far', '2026-12-01'), goal('near', '2026-10-05')], '2026-10-01')?.id, 'near')
+assert.equal(nearestGoal([goal('today', '2026-10-01'), goal('far', '2026-12-01')], '2026-10-01')?.id, 'today')
+assert.equal(nearestGoal([goal('open', null), goal('past', '2026-09-30')], '2026-10-01'), null)
 
 const badRoutines = [
   { ...routineData, version: 2 },

@@ -195,3 +195,40 @@ export function repeatLabel(repeat: RoutineRepeat): string {
   if (days.join() === '0,6') return '주말'
   return days.map((day) => WEEKDAYS_SHORT[day]).join(' ')
 }
+
+// The D-day shown on the record page: the nearest dated goal from today on. Past and open-ended goals are left out.
+export function nearestGoal(goals: Goal[], today: string): Goal | null {
+  return sortedGoals(goals.filter((goal) => goal.date !== null && goal.date >= today))[0] ?? null
+}
+
+// Whether a day earns the calendar dot: every daily/weekday routine due that day is done.
+// Weekly routines can be done on any day, so they only count when checked that day (a day with nothing else due needs one).
+export function dayComplete(data: RoutineData, date: string): boolean {
+  let required = 0
+  let doneAny = false
+  for (const routine of data.routines) {
+    if (!isDue(routine, date)) continue
+    const done = isChecked(data, date, routine.id)
+    if (routine.repeat.kind !== 'weekly') {
+      if (!done) return false
+      required += 1
+    }
+    if (done) doneAny = true
+  }
+  return required > 0 || doneAny
+}
+
+export type RoutineRate = { routine: Routine; done: number; total: number }
+
+// Completion per routine over `dates`, counting only days the routine was due, from its creation up to `today`.
+// Weekly routines are measured against their weekly target scaled to those days (3/week over 7 days -> 3),
+// and extra checks beyond the target do not push past 100%. Routines with nothing to measure are left out.
+export function routineRates(data: RoutineData, dates: string[], today: string): RoutineRate[] {
+  return data.routines.flatMap((routine) => {
+    const days = dates.filter((date) => date <= today && isDue(routine, date))
+    const done = days.filter((date) => isChecked(data, date, routine.id)).length
+    if (routine.repeat.kind !== 'weekly') return days.length ? [{ routine, done, total: days.length }] : []
+    const total = Math.round(routine.repeat.times * days.length / 7)
+    return total ? [{ routine, done: Math.min(done, total), total }] : []
+  })
+}
