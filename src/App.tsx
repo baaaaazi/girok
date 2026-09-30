@@ -326,7 +326,8 @@ export default function App() {
           date={selectedDate}
           hours={editorHours}
           records={editorHours.map((hour) => data.records[selectedDate]?.[String(hour)])}
-          onClose={() => { setEditorHours(null); setSelection(null) }}
+          // Closing without saving keeps a multi-selection so it can be adjusted and reopened.
+          onClose={(changed) => { setEditorHours(null); if (changed) setSelection(null) }}
           onSave={(activities) => saveHours(editorHours, activities)}
           onDelete={() => deleteHours(editorHours)}
         />
@@ -999,7 +1000,7 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
   date: string
   hours: number[]
   records: Array<HourRecord | undefined>
-  onClose: () => void
+  onClose: (changed: boolean) => void
   onSave: (activities: Activity[]) => boolean
   onDelete: () => boolean
 }) {
@@ -1012,6 +1013,8 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
   const titleRef = useRef<HTMLHeadingElement>(null)
   const closeTimer = useRef<number | undefined>(undefined)
   const closingRef = useRef(false)
+  const changedRef = useRef(false)
+  const pressedBackdrop = useRef(false)
   const [primary, setPrimary] = useState<DraftActivity>(() => record?.segments[0] ? { ...record.segments[0] } : { category: null, text: '' })
   const [secondary, setSecondary] = useState<DraftActivity>(() => record?.segments[1] ? { ...record.segments[1] } : { category: null, text: '' })
   const [memoVisible, setMemoVisible] = useState(Boolean(record?.segments.some((activity) => activity.text)))
@@ -1055,6 +1058,7 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
     const activities: Activity[] = [{ category: nextPrimary.category, text: nextPrimary.text }]
     if (showSecondary && nextSecondary.category) activities.push({ category: nextSecondary.category, text: nextSecondary.text })
     const saved = onSave(activities)
+    if (saved) changedRef.current = true
     setSaveFailed(!saved)
     return saved
   }
@@ -1068,7 +1072,7 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const duration = reduced ? 140 : window.matchMedia('(max-width: 719px)').matches ? 180 : 160
     // Unmount from the timer rather than the dialog's close event, which some embedded browsers defer.
-    closeTimer.current = window.setTimeout(() => { dialog.close(); onClose() }, duration)
+    closeTimer.current = window.setTimeout(() => { dialog.close(); onClose(changedRef.current) }, duration)
   }
 
   const setClosingAttribute = () => dialogRef.current?.setAttribute('data-closing', '')
@@ -1097,6 +1101,10 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
   return <dialog
     ref={dialogRef}
     className="entry-dialog"
+    // A pointer whose target is the <dialog> itself is on the backdrop, since the form fills the sheet.
+    // Require both press and release there so a drag that starts inside (e.g. selecting memo text) never dismisses.
+    onPointerDown={(event) => { pressedBackdrop.current = event.target === event.currentTarget }}
+    onClick={(event) => { if (pressedBackdrop.current && event.target === event.currentTarget) close() }}
     aria-labelledby={titleId}
     onCancel={(event) => { event.preventDefault(); close() }}
   >
@@ -1117,7 +1125,7 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
       </fieldset>}
       {primary.category && !secondaryVisible && <button className="editor-option" type="button" onClick={() => setSecondaryVisible(true)}>+ 활동 하나 더</button>}
       <footer className="dialog-footer">
-        {hasRecord && <button className="delete-entry" type="button" onClick={() => { cancelMemo(); if (onDelete()) close(); else setSaveFailed(true) }}>{multiple ? '선택한 칸 기록 삭제' : '이 시간 기록 삭제'}</button>}
+        {hasRecord && <button className="delete-entry" type="button" onClick={() => { cancelMemo(); if (onDelete()) { changedRef.current = true; close() } else setSaveFailed(true) }}>{multiple ? '선택한 칸 기록 삭제' : '이 시간 기록 삭제'}</button>}
         <span className={`save-status ${saveFailed ? 'save-status-error' : ''}`} role="status" aria-live="polite">{saveFailed ? '저장하지 못함' : primary.category ? '자동 저장됨' : '카테고리를 선택하면 저장돼요'}</span>
         <button className="save-entry" type="submit">완료</button>
       </footer>
