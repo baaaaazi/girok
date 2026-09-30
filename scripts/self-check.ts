@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
 import { categoryPresence, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { CORRUPT_BACKUP_KEY, EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
+import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayProgress, ddayLabel, isDue, readRoutineData, removeRoutine, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
+import { backupFile } from '../src/lib/storage.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
+import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
 
 const bytes = new Map<string, string>()
 let failSetNext = false
@@ -143,5 +146,87 @@ const bulk = replaceHours(canonical, '2026-09-18', [0, 1, 2], { segments: [sleep
 assert.deepEqual(Object.keys(bulk.records['2026-09-18']), ['0', '1', '2'])
 assert.deepEqual(bulk.records['2026-09-17'], canonical.records['2026-09-17'])
 assert.equal(replaceHours(bulk, '2026-09-18', [0, 1, 2], null).records['2026-09-18'], undefined)
+
+// Routines: 2026-09-27 is a Sunday.
+const water: Routine = { id: 'w', name: '물 마시기', icon: 'water', color: 'blue', repeat: { kind: 'daily' }, createdAt: '2026-09-20' }
+const gym: Routine = { id: 'g', name: '운동', icon: 'dumbbell', color: 'green', repeat: { kind: 'weekdays', days: [1, 3, 5] }, createdAt: '2026-09-20' }
+const read: Routine = { id: 'r', name: '책', icon: 'book', color: 'violet', repeat: { kind: 'weekly', times: 2 }, createdAt: '2026-09-13' }
+let routineData: RoutineData = [water, gym, read].reduce(upsertRoutine, EMPTY_ROUTINE_DATA)
+assert.equal(validateRoutineData(routineData), true)
+assert.equal(weekStart('2026-10-01'), '2026-09-27')
+assert.equal(weekStart('2026-09-27'), '2026-09-27')
+assert.equal(isDue(water, '2026-09-19'), false)
+assert.equal(isDue(gym, '2026-09-30'), true) // Wednesday
+assert.equal(isDue(gym, '2026-10-01'), false) // Thursday
+assert.equal(isDue(read, '2026-10-01'), true)
+assert.equal(repeatLabel(gym.repeat), '월 수 금')
+assert.equal(repeatLabel({ kind: 'weekdays', days: [5, 4, 3, 2, 1] }), '평일')
+
+for (const day of ['2026-09-28', '2026-09-29', '2026-09-30']) routineData = toggleCheck(routineData, day, 'w')
+assert.equal(streak(routineData, water, '2026-10-01'), 3) // today not done yet still counts through yesterday
+routineData = toggleCheck(routineData, '2026-10-01', 'w')
+assert.equal(streak(routineData, water, '2026-10-01'), 4)
+routineData = toggleCheck(routineData, '2026-10-01', 'w')
+assert.equal(routineData.checks['2026-10-01'], undefined)
+assert.equal(streak(routineData, water, '2026-10-02'), 0) // missed a past day
+
+routineData = toggleCheck(routineData, '2026-09-28', 'g') // Mon
+routineData = toggleCheck(routineData, '2026-09-30', 'g') // Wed
+assert.equal(streak(routineData, gym, '2026-10-01'), 2) // Thursday is not due, so it does not break the streak
+assert.equal(streak(routineData, gym, '2026-10-03'), 0) // Friday was missed
+
+for (const day of ['2026-09-14', '2026-09-16', '2026-09-22', '2026-09-24', '2026-09-28']) routineData = toggleCheck(routineData, day, 'r')
+assert.equal(weekCount(routineData, 'r', '2026-10-01'), 1)
+assert.equal(streak(routineData, read, '2026-10-01'), 2) // current week still in progress
+routineData = toggleCheck(routineData, '2026-10-01', 'r')
+assert.equal(streak(routineData, read, '2026-10-01'), 3)
+assert.deepEqual(dayProgress(routineData, '2026-09-30'), { done: 2, total: 3 })
+
+routineData = removeRoutine(routineData, 'w')
+assert.equal(routineData.routines.some((routine) => routine.id === 'w'), false)
+assert.equal(Object.values(routineData.checks).some((ids) => ids.includes('w')), false)
+assert.equal(validateRoutineData(routineData), true)
+
+const goal = (id: string, date: string | null, createdAt = '2026-09-01'): Goal => ({ id, name: id, date, createdAt })
+assert.equal(ddayLabel(goal('a', '2026-10-13'), '2026-10-01'), 'D-12')
+assert.equal(ddayLabel(goal('a', '2026-10-01'), '2026-10-01'), 'D-day')
+assert.equal(ddayLabel(goal('a', '2026-09-28'), '2026-10-01'), 'D+3')
+assert.equal(ddayLabel(goal('a', null), '2026-10-01'), '목표')
+assert.equal(ddayLabel(goal('a', '2027-03-28'), '2026-10-25'), 'D-154') // spans a DST change in some zones
+assert.deepEqual(sortedGoals([goal('open', null), goal('far', '2026-12-01'), goal('near', '2026-10-05')]).map((item) => item.id), ['near', 'far', 'open'])
+
+const badRoutines = [
+  { ...routineData, version: 2 },
+  { ...routineData, routines: [{ ...gym, repeat: { kind: 'weekdays', days: [] } }] },
+  { ...routineData, routines: [{ ...gym, icon: 'rocket' }] },
+  { ...routineData, routines: [{ ...gym, name: '   ' }] },
+  { ...routineData, routines: [gym, gym] },
+  { ...routineData, checks: { '2026-02-30': ['g'] } },
+  { ...routineData, goals: [{ ...goal('x', null), date: 'soon' }] },
+]
+for (const bad of badRoutines) assert.equal(validateRoutineData(bad), false)
+
+bytes.clear()
+assert.deepEqual(readRoutineData(), EMPTY_ROUTINE_DATA)
+assert.equal(writeRoutineData(routineData), true)
+assert.deepEqual(readRoutineData(), routineData)
+assert.equal(writeRoutineData(badRoutines[1] as RoutineData), false)
+assert.deepEqual(readRoutineData(), routineData)
+bytes.set(ROUTINE_STORAGE_KEY, '{ nope')
+assert.deepEqual(readRoutineData(), EMPTY_ROUTINE_DATA)
+assert.equal(clearRoutineData(), true)
+assert.deepEqual(readRoutineData(), EMPTY_ROUTINE_DATA)
+
+// Backups carry routines without touching the v2 record format.
+const withRoutines = parseImportedData(JSON.stringify(backupFile(canonical, routineData)))
+assert.ok('data' in withRoutines)
+assert.deepEqual(withRoutines.data, canonical)
+assert.equal('routineData' in withRoutines.data, false)
+assert.deepEqual(withRoutines.routineData, routineData)
+const oldBackup = parseImportedData(JSON.stringify(canonical))
+assert.ok('data' in oldBackup)
+assert.equal(oldBackup.routineData, null)
+assert.equal('error' in parseImportedData(JSON.stringify({ ...canonical, routineData: badRoutines[2] })), true)
+bytes.clear()
 
 console.log('self-check passed')

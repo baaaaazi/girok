@@ -1,3 +1,5 @@
+import { validateRoutineData } from './routines.ts'
+import type { RoutineData } from '../types/routine.ts'
 import { CATEGORY_IDS, type Activity, type AppData, type DayRecord, type HourRecord, type LegacyAppData, type LegacyDayRecord } from '../types/record.ts'
 
 export const LEGACY_STORAGE_KEY = 'girok:data:v1'
@@ -67,7 +69,8 @@ export function migrateV1(value: LegacyAppData): AppData {
 export function parseCanonical(raw: string): { data: AppData; migrated: boolean } | null {
   try {
     const parsed: unknown = JSON.parse(raw)
-    if (validateDataV2(parsed)) return { data: parsed, migrated: false }
+    // Keep only the record fields, so extras such as a backup's routineData never reach the v2 key.
+    if (validateDataV2(parsed)) return { data: { version: 2, records: parsed.records }, migrated: false }
     if (validateDataV1(parsed)) return { data: migrateV1(parsed), migrated: true }
   } catch {
     return null
@@ -110,9 +113,22 @@ export function writeData(data: AppData): boolean {
   }
 }
 
-export function parseImportedData(raw: string): { data: AppData; migrated: boolean } | { error: string } {
+export type BackupFile = AppData & { routineData?: RoutineData }
+
+// Backups carry routines next to the records; older apps ignore the extra field.
+export function backupFile(data: AppData, routineData: RoutineData): BackupFile {
+  return { version: 2, records: data.records, routineData }
+}
+
+// `routineData` is null when the file has none (an older backup), so current routines can be kept.
+export function parseImportedData(raw: string): { data: AppData; routineData: RoutineData | null; migrated: boolean } | { error: string } {
   const parsed = parseCanonical(raw)
-  return parsed ?? { error: 'girok 백업 형식과 일치하지 않아요.' }
+  if (!parsed) return { error: 'girok 백업 형식과 일치하지 않아요.' }
+  let routineData: unknown
+  try { routineData = (JSON.parse(raw) as { routineData?: unknown }).routineData } catch { routineData = undefined }
+  if (routineData === undefined) return { ...parsed, routineData: null }
+  if (!validateRoutineData(routineData)) return { error: '백업 파일의 루틴 데이터가 올바르지 않아요.' }
+  return { ...parsed, routineData }
 }
 
 export function replaceData(data: AppData): boolean {

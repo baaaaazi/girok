@@ -27,7 +27,7 @@ export type LegacyAppData = {
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
-export type Page = 'record' | 'calendar' | 'review' | 'settings'
+export type Page = 'record' | 'routine' | 'calendar' | 'review' | 'settings'
 
 export const CATEGORY_META: Record<CategoryId, { label: string; color: string }> = {
   study: { label: '공부', color: '#4A7FCC' },

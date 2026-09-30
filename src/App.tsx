@@ -18,10 +18,13 @@ import {
   WEEKDAYS_SHORT,
 } from './lib/date'
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
-import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
+import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
+import { EMPTY_ROUTINE_DATA, clearRoutineData, readRoutineData, writeRoutineData } from './lib/routines'
+import type { RoutineData } from './types/routine'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { CategoryIcon } from './icons'
 import { exitApp, isNative, listenBackButton, shareBackup } from './native'
+import { RoutinePage } from './RoutinePage'
 
 type StyleVars = CSSProperties & Record<`--${string}`, string | number>
 type Notice = { id: number; text: string; kind: 'success' | 'error' | 'info' }
@@ -109,12 +112,14 @@ function hoursLabel(sortedHours: number[]): string {
 
 const NAV_ITEMS: Array<{ id: Page; label: string; icon: string }> = [
   { id: 'record', label: '기록', icon: 'M5 4.5h4.5a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Zm9.5 0H19a.5.5 0 0 1 .5.5v4.5a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5ZM5 14h4.5a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5v-4.5A.5.5 0 0 1 5 14Zm9.5 0H19a.5.5 0 0 1 .5.5V19a.5.5 0 0 1-.5.5h-4.5a.5.5 0 0 1-.5-.5v-4.5a.5.5 0 0 1 .5-.5Z' },
+  { id: 'routine', label: '루틴', icon: 'M12 3.8a8.2 8.2 0 1 0 0 16.4 8.2 8.2 0 0 0 0-16.4Zm-3.7 8.4 2.6 2.6 4.9-5.2' },
   { id: 'calendar', label: '달력', icon: 'M5.5 5.5h13a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1ZM4.5 10h15M8.5 3.5v4m7-4v4' },
   { id: 'review', label: '돌아보기', icon: 'M12 3.8a8.2 8.2 0 1 0 8.2 8.2M12 3.8V12h8.2M14.8 3.9a8.2 8.2 0 0 1 5.3 5.3' },
 ]
 
 export default function App() {
   const [data, setData] = useState<AppData>(() => readData())
+  const [routineData, setRoutineData] = useState<RoutineData>(() => readRoutineData())
   const [page, setPage] = useState<Page>('record')
   const [selectedDate, setSelectedDate] = useState(todayKey)
   const [monthCursor, setMonthCursor] = useState(() => monthStart(new Date()))
@@ -139,6 +144,15 @@ export default function App() {
       return false
     }
     setData(next)
+    return true
+  }
+
+  const commitRoutines = (next: RoutineData): boolean => {
+    if (!writeRoutineData(next)) {
+      showNotice({ text: '저장하지 못했어요. 기존 루틴은 그대로예요.', kind: 'error' })
+      return false
+    }
+    setRoutineData(next)
     return true
   }
 
@@ -216,18 +230,18 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((page !== 'record' && page !== 'review') || editorHours !== null || event.metaKey || event.ctrlKey || event.altKey) return
+      if ((page !== 'record' && page !== 'routine' && page !== 'review') || editorHours !== null || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       if (target?.matches('input, textarea, select, button, [contenteditable="true"]')) return
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
-        if (page === 'record') navigateDate(-1)
-        else navigateReview(-1)
+        if (page === 'review') navigateReview(-1)
+        else navigateDate(-1)
       }
       if (event.key === 'ArrowRight') {
         event.preventDefault()
-        if (page === 'record') navigateDate(1)
-        else navigateReview(1)
+        if (page === 'review') navigateReview(1)
+        else navigateDate(1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -270,6 +284,17 @@ export default function App() {
             onOpenReview={() => { setReviewMode('day'); navigate('review') }}
           />
         )}
+        {page === 'routine' && (
+          <RoutinePage
+            date={selectedDate}
+            today={todayKey()}
+            data={routineData}
+            onChange={commitRoutines}
+            onPrevious={() => navigateDate(-1)}
+            onNext={() => navigateDate(1)}
+            onToday={() => setSelectedDate(todayKey())}
+          />
+        )}
         {page === 'calendar' && (
           <CalendarPage
             cursor={monthCursor}
@@ -294,24 +319,30 @@ export default function App() {
         {page === 'settings' && (
           <SettingsPage
             data={data}
+            routineData={routineData}
             theme={theme}
             clearArmed={clearArmed}
             onThemeChange={setTheme}
-            onImport={(next) => {
+            onImport={(next, nextRoutines) => {
+              // Routines first, so a failure there leaves everything unchanged. An older backup without routines keeps the current ones.
+              if (nextRoutines && !writeRoutineData(nextRoutines)) { showNotice({ text: '가져온 데이터를 저장하지 못했어요.', kind: 'error' }); return }
+              if (nextRoutines) setRoutineData(nextRoutines)
               if (replaceData(next)) {
                 setData(next)
                 showNotice({ text: '백업 파일을 복원했어요.', kind: 'success' })
-              } else showNotice({ text: '가져온 데이터를 저장하지 못했어요.', kind: 'error' })
+              } else showNotice({ text: nextRoutines ? '루틴만 복원하고 기록은 저장하지 못했어요.' : '가져온 데이터를 저장하지 못했어요.', kind: 'error' })
             }}
             onNotice={showNotice}
-            onArmClear={() => { if (window.confirm('모든 기록을 지울까요? 이 작업은 되돌릴 수 없어요.')) setClearArmed(true) }}
+            onArmClear={() => { if (window.confirm('모든 기록과 루틴을 지울까요? 이 작업은 되돌릴 수 없어요.')) setClearArmed(true) }}
             onCancelClear={() => setClearArmed(false)}
             onClear={() => {
-              if (clearData()) {
-                setData(EMPTY_DATA)
-                setClearArmed(false)
-                showNotice({ text: '모든 기록을 지웠어요.', kind: 'success' })
-              } else showNotice({ text: '데이터를 지우지 못했어요. 기록은 그대로예요.', kind: 'error' })
+              if (!clearData()) { showNotice({ text: '데이터를 지우지 못했어요. 기록은 그대로예요.', kind: 'error' }); return }
+              setData(EMPTY_DATA)
+              setClearArmed(false)
+              if (clearRoutineData()) {
+                setRoutineData(EMPTY_ROUTINE_DATA)
+                showNotice({ text: '모든 기록과 루틴을 지웠어요.', kind: 'success' })
+              } else showNotice({ text: '기록은 지웠지만 루틴은 지우지 못했어요.', kind: 'error' })
             }}
           />
         )}
@@ -902,12 +933,13 @@ function MonthSummary({ records, dates }: { records: AppData['records']; dates: 
   </section>
 }
 
-function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
+function SettingsPage({ data, routineData, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
   data: AppData
+  routineData: RoutineData
   theme: ThemeMode
   clearArmed: boolean
   onThemeChange: (theme: ThemeMode) => void
-  onImport: (data: AppData) => void
+  onImport: (data: AppData, routineData: RoutineData | null) => void
   onNotice: (notice: NoticeContent) => void
   onArmClear: () => void
   onCancelClear: () => void
@@ -918,16 +950,17 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
   const hourCount = recordedHourCount(data.records, Object.keys(data.records))
   const exportData = async () => {
     const fileName = `girok-backup-${todayKey()}.json`
+    const json = JSON.stringify(backupFile(data, routineData), null, 2)
     if (isNative) {
       try {
-        const result = await shareBackup(fileName, JSON.stringify(data, null, 2))
+        const result = await shareBackup(fileName, json)
         if (result === 'shared') onNotice({ text: '백업 파일을 저장했어요.', kind: 'success' })
       } catch {
         onNotice({ text: '백업 파일을 만들지 못했어요.', kind: 'error' })
       }
       return
     }
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const blob = new Blob([json], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -945,7 +978,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
     if ('error' in result) { onNotice({ text: result.error, kind: 'error' }); return }
     const importedDays = Object.keys(result.data.records).length
     if (dateCount > 0 && !window.confirm(`현재 기록(${dateCount}일)을 백업 파일의 기록(${importedDays}일)으로 모두 바꿀까요? 이 작업은 되돌릴 수 없어요.`)) return
-    onImport(result.data)
+    onImport(result.data, result.routineData)
   }
 
   return <section className="section-page settings-page" aria-labelledby="settings-title">
@@ -964,7 +997,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
       <section className="setting-section" aria-labelledby="backup-title">
         <div className="setting-heading">
           <div><h2 id="backup-title">데이터 백업</h2><p>기록은 {isNative ? '이 앱' : '이 기기의 브라우저'}에만 저장돼요. 중요한 기록은 가끔 백업해 두세요.</p></div>
-          <span className="setting-count">{dateCount}일 · {hourCount}시간</span>
+          <span className="setting-count">{dateCount}일 · {hourCount}시간{routineData.routines.length > 0 && ` · 루틴 ${routineData.routines.length}개`}</span>
         </div>
         <div className="setting-actions">
           <button className="outline-button" type="button" onClick={exportData}>백업 파일 내보내기</button>
@@ -974,7 +1007,7 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
         <p className="setting-hint">girok 백업 파일이 아니면 가져오지 않으니 안심하세요.</p>
       </section>
       <section className="setting-section setting-danger" aria-labelledby="danger-title">
-        <div className="setting-heading"><div><h2 id="danger-title">기록 삭제</h2><p>모든 날짜의 기록을 {isNative ? '이 앱' : '이 브라우저'}에서 삭제해요.</p></div></div>
+        <div className="setting-heading"><div><h2 id="danger-title">기록 삭제</h2><p>모든 날짜의 기록과 루틴, 목표를 {isNative ? '이 앱' : '이 브라우저'}에서 삭제해요.</p></div></div>
         {!clearArmed
           ? <button className="danger-button" type="button" onClick={onArmClear}>모든 기록 삭제</button>
           : <div className="clear-confirm" role="alert"><p>모든 기록을 영구 삭제할까요? 한 번 더 확인이 필요해요.</p><div className="clear-actions">
