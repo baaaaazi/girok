@@ -30,12 +30,12 @@ export type ThemeMode = 'system' | 'light' | 'dark'
 export type Page = 'record' | 'calendar' | 'review' | 'settings'
 
 export const CATEGORY_META: Record<CategoryId, { label: string; color: string }> = {
-  study: { label: '공부', color: '#4F7FB8' },
-  sleep: { label: '수면', color: '#8274B4' },
-  meal: { label: '식사', color: '#D0874A' },
-  travel: { label: '이동', color: '#3E9A96' },
-  rest: { label: '휴식', color: '#C9A43E' },
-  game: { label: '게임', color: '#C0668F' },
-  exercise: { label: '운동', color: '#5E9E5A' },
-  other: { label: '기타', color: '#8C877D' },
+  study: { label: '공부', color: '#4A7FCC' },
+  sleep: { label: '수면', color: '#8466C4' },
+  meal: { label: '식사', color: '#E08A3C' },
+  travel: { label: '이동', color: '#2E9E96' },
+  rest: { label: '휴식', color: '#D1A62A' },
+  game: { label: '게임', color: '#D0578F' },
+  exercise: { label: '운동', color: '#4E9E5E' },
+  other: { label: '기타', color: '#8A8D96' },
 }

@@ -20,6 +20,7 @@ import {
 import { categoryPresence, presentCategories, recordedHourCount, replaceHour, reviewHours } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
+import { CategoryIcon } from './icons'
 
 type StyleVars = CSSProperties & Record<`--${string}`, string | number>
 type Notice = { id: number; text: string; kind: 'success' | 'error' | 'info' }
@@ -27,8 +28,8 @@ type NoticeContent = Omit<Notice, 'id'>
 type DraftActivity = { category: CategoryId | null; text: string }
 type ReviewMode = 'day' | 'week' | 'month'
 
-const LIGHT_COLOR = '#F4F1E9'
-const DARK_COLOR = '#1E1C18'
+const LIGHT_COLOR = '#FFFFFF'
+const DARK_COLOR = '#111113'
 
 function readTheme(): ThemeMode {
   try {
@@ -177,7 +178,7 @@ export default function App() {
         </button>
       </header>
 
-      <main className="page-content">
+      <main className="page-content" key={page}>
         {page === 'record' && (
           <RecordPage
             date={selectedDate}
@@ -282,11 +283,11 @@ function RecordPage({ date, display, data, onPrevious, onNext, onToday, onOpenHo
     <div className="record-main">
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
       <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
-      <HourGrid date={date} day={day} onOpenHour={onOpenHour} />
+      <HourGrid key={date} date={date} day={day} onOpenHour={onOpenHour} />
       {categories.length > 0 && <div className="record-categories">
         <ul aria-label="기록한 카테고리">
           {categories.map((category) => <li key={category} style={categoryStyle(category)}>
-            <span className="activity-dot" aria-hidden="true" />
+            <CategoryIcon category={category} />
             <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}</span>
           </li>)}
         </ul>
@@ -378,7 +379,7 @@ function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onO
         key={hour}
         type="button"
         className={`hour-cell ${segments.length ? 'hour-cell-filled' : 'hour-cell-empty'} ${segments.length === 2 ? 'hour-cell-dual' : ''} ${currentHour === hour ? 'hour-cell-now' : ''}`}
-        style={segments.length ? categoryPairStyle(segments) : undefined}
+        style={{ ...(segments.length ? categoryPairStyle(segments) : {}), '--i': hour } as StyleVars}
         aria-label={`${hourLabel(hour)}${currentHour === hour ? ' 지금' : ''} ${descriptor} ${segments.length ? '기록 수정' : '기록 추가'}`}
         aria-current={currentHour === hour ? 'time' : undefined}
         onClick={() => onOpenHour(hour)}
@@ -386,16 +387,11 @@ function HourGrid({ date, day, onOpenHour }: { date: string; day: DayRecord; onO
         <span className="hour-number">{pad(hour)}</span>
         {currentHour === hour && <span className="hour-now">지금</span>}
         {segments.length === 0 && <span className="hour-empty-mark" aria-hidden="true">+</span>}
-        {segments.length === 1 && <span className="hour-activity" style={categoryStyle(segments[0].category)}>
-          <span className="activity-dot" aria-hidden="true" /><span className="hour-activity-name">{categoryLabel}</span>
-        </span>}
-        {segments.length === 2 && <span className="hour-activity hour-activity-dual">
-          <span className="hour-activity-name">{categoryLabel}</span>
-          <span className="activity-pair-dots" aria-hidden="true">
-            <i style={{ '--category': CATEGORY_META[segments[0].category].color } as StyleVars} />
-            <i style={{ '--category': CATEGORY_META[segments[1].category].color } as StyleVars} />
-          </span>
-        </span>}
+        {segments.length === 1 && <CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" />}
+        {segments.length === 2 && <>
+          <span className="hour-icon-slot hour-icon-a" style={categoryStyle(segments[0].category)}><CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" /></span>
+          <span className="hour-icon-slot hour-icon-b" style={categoryStyle(segments[1].category)}><CategoryIcon key={segments[1].category} category={segments[1].category} className="hour-icon" /></span>
+        </>}
       </button>
     })}
   </div>
@@ -429,16 +425,16 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
     { label: '18', x: 13, y: 120, anchor: 'start' },
   ] as const
 
-  return <svg className={`day-ring ${compact ? 'day-ring-compact' : ''}`} viewBox="0 0 240 240" role="img" aria-labelledby={titleId}>
+  return <svg key={date} className={`day-ring ${compact ? 'day-ring-compact' : ''}`} viewBox="0 0 240 240" role="img" aria-labelledby={titleId}>
     <title id={titleId}>{displayDate(date).compact} · {count}시간 기록</title>
     <desc>자정부터 시계 방향으로 한 시간씩 표시한 24시간 기록입니다. 함께 기록한 활동은 한 시간 칸을 반씩 나눠 나타냅니다.</desc>
     {hours().map((hour) => <path key={`track-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke="var(--ring-track)" strokeWidth={RING_WIDTH} />)}
     {entries.map(({ hour, activities }) => activities.length === 2
-      ? <g key={`hour-${hour}`}>
+      ? <g key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars}>
           <path d={arcPath(hour, hour + 0.5, HOUR_GAP / 2, SPLIT_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />
           <path d={arcPath(hour + 0.5, hour + 1, SPLIT_GAP / 2, HOUR_GAP / 2)} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth={RING_WIDTH} />
         </g>
-      : <path key={`hour-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
+      : <path key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
     <circle cx="120" cy="120" r="53" fill="var(--surface-raised)" />
     <text x="120" y="115" textAnchor="middle" className="ring-center-date">{displayDate(date).number}</text>
     <text x="120" y="137" textAnchor="middle" className="ring-center-count">{count}시간 기록</text>
@@ -456,7 +452,7 @@ function DayOverview({ date, day, records, onOpenReview }: { date: string; day: 
     <div className="overview-total"><strong>{count} / 24</strong><span>시간 기록</span></div>
     {categories.length ? <ul className="overview-categories" aria-label="기록한 카테고리">
       {categories.map((category) => <li key={category}>
-        <span className="activity-dot" style={categoryStyle(category)} aria-hidden="true" />
+        <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
         <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}개 시간대</span>
       </li>)}
     </ul> : <p className="overview-empty">기록을 남기면 이곳에 하루의 흐름이 보여요.</p>}
@@ -469,7 +465,7 @@ function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) 
   if (!present.length) return <p className="review-empty">아직 돌아볼 기록이 없어요.</p>
   return <ul className="category-legend" aria-label="기록한 카테고리">
     {present.map((category) => <li key={category}>
-      <span className="activity-dot" style={categoryStyle(category)} aria-hidden="true" />
+      <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
       <span>{CATEGORY_META[category].label}</span><span>{presence[category]}개 시간대</span>
     </li>)}
   </ul>
@@ -532,13 +528,13 @@ function DayReview({ date, day }: { date: string; day: DayRecord }) {
           <time className="review-hour-time">{formatRangeTime(hour * 60)} – {formatRangeTime((hour + 1) * 60)}</time>
           {activities.length === 1
             ? <div className="single-review-activity">
-                <div className="activity-title"><span className="activity-dot" style={categoryStyle(activities[0].category)} aria-hidden="true" /><strong>{CATEGORY_META[activities[0].category].label}</strong></div>
+                <div className="activity-title"><span className="legend-icon" style={categoryStyle(activities[0].category)}><CategoryIcon category={activities[0].category} /></span><strong>{CATEGORY_META[activities[0].category].label}</strong></div>
                 {activities[0].text && <p>{activities[0].text}</p>}
               </div>
             : <div className="dual-review-activity">
                 <span className="together-label">함께 기록</span>
                 <ul>{activities.map((activity, index) => <li key={`${activity.category}-${index}`}>
-                  <div className="activity-title"><span className="activity-dot" style={categoryStyle(activity.category)} aria-hidden="true" /><strong>{CATEGORY_META[activity.category].label}</strong></div>
+                  <div className="activity-title"><span className="legend-icon" style={categoryStyle(activity.category)}><CategoryIcon category={activity.category} /></span><strong>{CATEGORY_META[activity.category].label}</strong></div>
                   {activity.text && <p>{activity.text}</p>}
                 </li>)}</ul>
               </div>}
@@ -559,7 +555,7 @@ function RangeReview({ records, dates, mode }: { records: AppData['records']; da
       <div className="subsection-heading"><h2 id="presence-title">카테고리가 등장한 시간</h2><span>{present.length}개</span></div>
       {present.length ? <ul className="presence-list">
         {present.map((category) => <li key={category}>
-          <span className="activity-dot" style={categoryStyle(category)} aria-hidden="true" />
+          <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
           <span>{CATEGORY_META[category].label}</span><strong>{presence[category]}<span>개 시간대</span></strong>
         </li>)}
       </ul> : <p className="activity-empty">이 기간에는 아직 기록이 없어요.</p>}
@@ -762,7 +758,7 @@ function EntryDialog({ date, hour, record, onClose, onSave, onDelete }: {
   const categoryOptions = (slot: 1 | 2, selected: CategoryId | null) => <div className="category-options">
     {CATEGORY_IDS.map((category) => <label key={category} className={`category-option ${selected === category ? 'category-option-selected' : ''}`} style={categoryStyle(category)}>
       <input className="visually-hidden" type="radio" name={`entry-category-${date}-${hour}-${slot}`} value={category} checked={selected === category} onChange={() => chooseCategory(slot, category)} />
-      <span className="activity-dot" aria-hidden="true" /><span>{CATEGORY_META[category].label}</span>
+      <CategoryIcon category={category} /><span>{CATEGORY_META[category].label}</span>
     </label>)}
   </div>
 
