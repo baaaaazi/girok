@@ -21,6 +21,7 @@ import { categoryPresence, presentCategories, recordedHourCount, replaceHours, r
 import { EMPTY_DATA, THEME_KEY, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { CategoryIcon } from './icons'
+import { exitApp, isNative, listenBackButton, shareBackup } from './native'
 
 type StyleVars = CSSProperties & Record<`--${string}`, string | number>
 type Notice = { id: number; text: string; kind: 'success' | 'error' | 'info' }
@@ -170,6 +171,22 @@ export default function App() {
   }, [theme])
 
   useEffect(() => { setSelection(null) }, [selectedDate])
+
+  const backHandler = useRef(() => {})
+  backHandler.current = () => {
+    const dialog = document.querySelector<HTMLDialogElement>('dialog[open]')
+    if (dialog) dialog.dispatchEvent(new Event('cancel', { cancelable: true }))
+    else if (selection) setSelection(null)
+    else if (page !== 'record') navigate('record')
+    else void exitApp()
+  }
+  useEffect(() => {
+    if (!isNative) return
+    let remove: (() => void) | undefined
+    let disposed = false
+    void listenBackButton(() => backHandler.current()).then((stop) => { if (disposed) stop(); else remove = stop })
+    return () => { disposed = true; remove?.() }
+  }, [])
 
   useEffect(() => {
     if (selection === null || multiHintSeen) return
@@ -898,12 +915,22 @@ function SettingsPage({ data, theme, clearArmed, onThemeChange, onImport, onNoti
   const fileInput = useRef<HTMLInputElement>(null)
   const dateCount = Object.values(data.records).filter((day) => Object.keys(day).length > 0).length
   const hourCount = recordedHourCount(data.records, Object.keys(data.records))
-  const exportData = () => {
+  const exportData = async () => {
+    const fileName = `girok-backup-${todayKey()}.json`
+    if (isNative) {
+      try {
+        const result = await shareBackup(fileName, JSON.stringify(data, null, 2))
+        if (result === 'shared') onNotice({ text: '백업 파일을 저장했어요.', kind: 'success' })
+      } catch {
+        onNotice({ text: '백업 파일을 만들지 못했어요.', kind: 'error' })
+      }
+      return
+    }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `girok-backup-${todayKey()}.json`
+    link.download = fileName
     link.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
     onNotice({ text: '백업 파일을 내려받았어요.', kind: 'success' })

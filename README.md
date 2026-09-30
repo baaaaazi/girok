@@ -31,3 +31,15 @@ npm run preview
 설정 → 정리하기의 데이터 삭제는 브라우저 확인과 별도의 명시적인 영구 삭제 버튼을 모두 거쳐야 합니다.
 
 `npm run self-check`는 날짜 경계, v1→v2 마이그레이션, 저장 안전성, 시간 CRUD, 함께 기록한 활동의 시간별 공존, 카테고리별 기록 시간 집계를 확인하는 작은 실행 검증입니다.
+
+## 배포
+
+- **웹(PWA)**: `main`에 푸시하면 `.github/workflows/deploy.yml`이 GitHub Pages(`/girok/`)에 배포합니다. 폰에서 사이트를 열고 "홈 화면에 추가"로 설치하세요.
+- **안드로이드 APK**: JDK 21과 Android SDK가 필요합니다.
+
+```bash
+npm run build:android
+cd android && ./gradlew assembleDebug
+```
+
+결과물은 `android/app/build/outputs/apk/debug/app-debug.apk`입니다. 앱 안에서는 백업 내보내기가 공유 창으로 열리고, 뒤로 가기 버튼은 열린 창 → 여러 칸 선택 → 기록 화면 순서로 닫습니다.
