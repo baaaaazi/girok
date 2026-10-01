@@ -20,7 +20,7 @@ import {
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CUSTOM_CATEGORY_MAX, newCategoryId, readCategoryData, reassignCategory, removeCategory, categoryHours, upsertCategory, writeCategoryData } from './lib/categories'
-import { heatDays, heatMonthLabels, heatWeeks } from './lib/heatmap'
+import { heatDays, heatMonthLabels, type HeatDay, heatMonths, heatSummary, heatWeeks } from './lib/heatmap'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from './lib/insights'
 import { EMPTY_ROUTINE_DATA, clearRoutineData, dayComplete, dayProgress, ddayLabel, nearestGoal, readRoutineData, routineRates, writeRoutineData } from './lib/routines'
 import type { CategoryData, CustomCategory } from './types/category'
@@ -387,6 +387,7 @@ export default function App() {
             onPrevious={() => navigateReview(-1)}
             onNext={() => navigateReview(1)}
             onSelectDate={(next) => { setSelectedDate(next); navigate('record') }}
+            onOpenMonth={(next) => { setSelectedDate(next); setReviewMode('month') }}
           />
         )}
         {page === 'settings' && (
@@ -839,7 +840,7 @@ function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) 
   </ul>
 }
 
-function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, onNext, onSelectDate }: {
+function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, onNext, onSelectDate, onOpenMonth }: {
   date: string
   data: AppData
   routineData: RoutineData
@@ -848,6 +849,7 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
   onPrevious: () => void
   onNext: () => void
   onSelectDate: (date: string) => void
+  onOpenMonth: (date: string) => void
 }) {
   const dates = mode === 'year' ? [] : reviewDates(date, mode)
   const rangeLabel = mode === 'year' ? '최근 1년' : reviewRangeLabel(date, mode, dates)
@@ -873,7 +875,7 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
     </div>
     <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0] ?? ''}`}>
       {mode === 'year'
-        ? <YearHeatmap records={data.records} routineData={routineData} onSelectDate={onSelectDate} />
+        ? <YearReview records={data.records} routineData={routineData} onSelectDate={onSelectDate} onOpenMonth={onOpenMonth} />
         : mode === 'day'
         ? <DayReview date={date} day={data.records[date] ?? {}} routineData={routineData} />
         : <RangeReview records={data.records} routineData={routineData} dates={dates} previousDates={reviewDates(mode === 'week' ? shiftDate(date, -7) : shiftMonth(date, -1), mode)} mode={mode} onSelectDate={onSelectDate} />}
@@ -881,13 +883,53 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
   </section>
 }
 
-function YearHeatmap({ records, routineData, onSelectDate }: { records: AppData['records']; routineData: RoutineData; onSelectDate: (date: string) => void }) {
-  const scrollRef = useRef<HTMLDivElement>(null)
+function YearReview({ records, routineData, onSelectDate, onOpenMonth }: { records: AppData['records']; routineData: RoutineData; onSelectDate: (date: string) => void; onOpenMonth: (date: string) => void }) {
   const today = todayKey()
   const days = heatDays(records, routineData, today)
+  const summary = heatSummary(days)
+  return <section className="range-review" aria-label="1년 돌아보기">
+    <dl className="range-stats">
+      <div><dt>기록한 날</dt><dd>{summary.recordedDays}<span>일</span></dd></div>
+      <div><dt>하루 평균</dt><dd>{summary.average}<span>시간</span></dd></div>
+      <div><dt>최장 연속</dt><dd>{summary.longestRun}<span>일</span></dd></div>
+    </dl>
+    <YearHeatmap days={days} today={today} onSelectDate={onSelectDate} />
+    {summary.recordedDays > 0 && <MonthBars days={days} onOpenMonth={onOpenMonth} />}
+  </section>
+}
+
+function MonthBars({ days, onOpenMonth }: { days: HeatDay[]; onOpenMonth: (date: string) => void }) {
+  const months = heatMonths(days)
+  const peak = Math.max(...months.map((month) => month.average))
+  const peakMonth = months.find((month) => month.average === peak)
+  return <section className="range-card" aria-labelledby="month-bars-title">
+    <div className="range-card-heading"><h2 id="month-bars-title">월별 기록</h2><span>하루 평균 · 누르면 그달로 가요</span></div>
+    <div className="month-bars">
+      {months.map((month, index) => {
+        const number = Number(month.month.slice(5))
+        const isPeak = month === peakMonth
+        return <button
+          key={month.month}
+          type="button"
+          className="month-bar"
+          data-peak={isPeak ? '' : undefined}
+          style={{ '--i': index, '--fill': peak ? month.average / peak : 0 } as StyleVars}
+          aria-label={`${month.month.slice(0, 4)}년 ${number}월, 하루 평균 ${month.average}시간 기록. 월 돌아보기 열기`}
+          onClick={() => onOpenMonth(month.last)}
+        >
+          <span className="month-bar-value" aria-hidden="true">{isPeak ? month.average : ''}</span>
+          <span className="month-bar-track" aria-hidden="true"><span /></span>
+          <span className="month-bar-label" aria-hidden="true">{number}</span>
+        </button>
+      })}
+    </div>
+  </section>
+}
+
+function YearHeatmap({ days, today, onSelectDate }: { days: HeatDay[]; today: string; onSelectDate: (date: string) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
   const weeks = heatWeeks(days)
   const months = heatMonthLabels(weeks)
-  const recordedDays = days.filter((day) => day.hours > 0).length
   const completeDays = days.filter((day) => day.complete).length
   // Open on the latest weeks; older ones are a swipe to the left.
   useLayoutEffect(() => {
@@ -897,7 +939,7 @@ function YearHeatmap({ records, routineData, onSelectDate }: { records: AppData[
   return <section className="range-card heatmap-card" aria-labelledby="heatmap-title">
     <div className="range-card-heading">
       <h2 id="heatmap-title">1년 잔디</h2>
-      <span>{recordedDays}일 기록{completeDays > 0 && ` · 루틴 완료 ${completeDays}일`}</span>
+      {completeDays > 0 && <span>루틴 완료 {completeDays}일</span>}
     </div>
     <div className="heatmap">
       <div className="heatmap-weekdays" aria-hidden="true">

@@ -47,3 +47,36 @@ export function heatMonthLabels(weeks: HeatWeek[], minGap = 3): HeatMonthLabel[]
   if (start && !start.date.endsWith('-01') && (labels[0]?.week ?? Infinity) >= minGap) labels.unshift({ week: 0, month: Number(start.date.slice(5, 7)) })
   return labels
 }
+
+export type HeatSummary = { recordedDays: number; average: number; longestRun: number } // average per recorded day, 1 decimal
+export type HeatMonth = { month: string; last: string; days: number; hours: number; average: number } // month is YYYY-MM; last is its latest day in range
+
+export function heatSummary(days: HeatDay[]): HeatSummary {
+  let recordedDays = 0
+  let hours = 0
+  let run = 0
+  let longestRun = 0
+  for (const day of days) {
+    run = day.hours ? run + 1 : 0
+    longestRun = Math.max(longestRun, run)
+    if (day.hours) recordedDays += 1
+    hours += day.hours
+  }
+  return { recordedDays, average: recordedDays ? Math.round(hours / recordedDays * 10) / 10 : 0, longestRun }
+}
+
+// Hours per calendar month, averaged over that month's days in range (blank days count),
+// so the partial first and current months compare fairly with full ones.
+export function heatMonths(days: HeatDay[]): HeatMonth[] {
+  const months: HeatMonth[] = []
+  for (const day of days) {
+    const month = day.date.slice(0, 7)
+    let current = months[months.length - 1]
+    if (current?.month !== month) months.push(current = { month, last: day.date, days: 0, hours: 0, average: 0 })
+    current.last = day.date
+    current.days += 1
+    current.hours += day.hours
+    current.average = Math.round(current.hours / current.days * 10) / 10
+  }
+  return months
+}

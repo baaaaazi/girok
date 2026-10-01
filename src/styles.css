@@ -401,6 +401,14 @@ button.heatmap-day:focus-visible { outline-offset: 0; }
 .heatmap-legend > span:not(.heatmap-day) { padding: 0 4px; }
 .heatmap-legend .heatmap-day { cursor: default; }
 .heatmap-legend-dot { display: inline-flex; align-items: center; margin-left: 8px; }
+.month-bars { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 4px; margin-top: 12px; }
+.month-bar { display: grid; grid-template-rows: 14px 72px 16px; min-width: 0; gap: 4px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.month-bar-value { color: var(--ink); font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.month-bar-track { display: flex; align-items: flex-end; overflow: hidden; border-radius: 4px; background: var(--ring-track); }
+.month-bar-track span { display: block; width: 100%; height: 100%; border-radius: 4px; background: color-mix(in srgb, var(--ink) 34%, var(--ring-track)); transform: scaleY(var(--fill)); transform-origin: bottom; animation: bar-up 520ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 24ms + 80ms); }
+.month-bar[data-peak] .month-bar-track span { background: var(--ink); }
+.month-bar-label { color: var(--faint); font-size: 10px; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+@keyframes bar-up { from { transform: scaleY(0); } }
 @keyframes heat-in { from { opacity: 0; transform: scale(0.7); } }
 .month-summary { margin-top: 16px; }
 .review-routine-line { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; text-align: center; }
@@ -756,7 +764,7 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
-  .heatmap-week { animation: none; }
+  .heatmap-week, .month-bar-track span { animation: none; }
   button.heatmap-day:active > span { transform: none; }
   .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak, .reminder-row, .routine-count-bump, .routine-progress-note-earned { animation: none; }
   .confetti, .routine-burst, .routine-row-pop::after, .routine-progress-shine { display: none; }

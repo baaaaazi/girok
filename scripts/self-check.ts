@@ -7,7 +7,7 @@ import { backupFile } from '../src/lib/storage.ts'
 import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
 import type { CategoryData } from '../src/types/category.ts'
 import { EMPTY_REMINDER_DATA, REMINDER_STORAGE_KEY, newReminderId, readReminderData, reminderNotificationIds, reminderOccurrences, removeReminder, timeLabel, upsertReminder, validateReminderData, writeReminderData } from '../src/lib/reminders.ts'
-import { heatDays, heatLevel, heatMonthLabels, heatWeeks } from '../src/lib/heatmap.ts'
+import { heatDays, heatLevel, heatMonthLabels, heatMonths, heatSummary, heatWeeks } from '../src/lib/heatmap.ts'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
@@ -230,6 +230,16 @@ assert.equal(monthLabels[0].week, 0) // partial October gets a label: November s
 assert.equal(monthLabels[1].week, 4) // 2025-11-01 is a Saturday in the fifth column
 assert.equal(monthLabels[12].week, 52)
 assert.deepEqual(heatMonthLabels(heatWeeks(heatDays({}, EMPTY_ROUTINE_DATA, '2026-10-10', 20))).map((label) => label.month), [10]) // partial September (one column) too narrow to label
+assert.deepEqual(heatSummary(year), { recordedDays: 2, average: 6.5, longestRun: 2 }) // 12h + 1h over two days in a row
+assert.deepEqual(heatSummary(heatDays({}, EMPTY_ROUTINE_DATA, '2026-10-01')), { recordedDays: 0, average: 0, longestRun: 0 })
+const runRecords: AppData['records'] = Object.fromEntries(['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-10', '2026-09-30', '2026-10-01'].map((date) => [date, { '9': { segments: [study] } }]))
+assert.equal(heatSummary(heatDays(runRecords, EMPTY_ROUTINE_DATA, '2026-10-01')).longestRun, 3) // the run can end before today
+const yearMonths = heatMonths(year)
+assert.equal(yearMonths.length, 13) // Oct 2025 (from the 2nd) through Oct 2026 (just the 1st)
+assert.deepEqual(yearMonths[0], { month: '2025-10', last: '2025-10-31', days: 30, hours: 0, average: 0 })
+assert.deepEqual(yearMonths[11], { month: '2026-09', last: '2026-09-30', days: 30, hours: 12, average: 0.4 }) // blank days count
+assert.deepEqual(yearMonths[12], { month: '2026-10', last: '2026-10-01', days: 1, hours: 1, average: 1 })
+assert.equal(yearMonths.reduce((sum, month) => sum + month.days, 0), 365)
 
 // Review rates: due days up to today; weekly routines use the weekly target scaled to the days counted.
 const lastWeek = Array.from({ length: 7 }, (_, index) => shiftDate('2026-10-01', index - 6))
