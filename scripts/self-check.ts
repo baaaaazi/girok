@@ -6,6 +6,7 @@ import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete,
 import { backupFile } from '../src/lib/storage.ts'
 import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
 import type { CategoryData } from '../src/types/category.ts'
+import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
 
@@ -304,5 +305,39 @@ assert.ok(!('error' in noCategories))
 assert.equal(noCategories.categoryData, null)
 assert.equal('error' in parseImportedData(JSON.stringify({ ...customDay, categoryData: { version: 1, categories: 'x' } })), true)
 bytes.clear()
+
+// Insights compare averages per recorded day, so blank days do not count as doing less.
+const dayOf = (sleepHours: number, studyHours: number): AppData['records'][string] => {
+  const day: AppData['records'][string] = {}
+  for (let hour = 0; hour < sleepHours; hour += 1) day[String(hour)] = { segments: [{ category: 'sleep', text: '' }] }
+  for (let hour = 0; hour < studyHours; hour += 1) day[String(12 + hour)] = { segments: [{ category: 'study', text: '' }] }
+  return day
+}
+const prevWeek = ['2026-09-18', '2026-09-19', '2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24']
+const thisWeek = ['2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01']
+const insightRecords: AppData['records'] = {}
+for (const date of prevWeek.slice(0, 4)) insightRecords[date] = dayOf(8, 2) // two blank days must not drag the average down
+for (const date of thisWeek) insightRecords[date] = dayOf(7, 4)
+assert.deepEqual(categoryChanges(insightRecords, thisWeek, prevWeek), [{ category: 'study', minutes: 120 }, { category: 'sleep', minutes: -60 }])
+assert.deepEqual(categoryChanges(insightRecords, thisWeek, prevWeek, { limit: 1 }), [{ category: 'study', minutes: 120 }])
+assert.deepEqual(categoryChanges(insightRecords, thisWeek, prevWeek, { minMinutes: 90 }), [{ category: 'study', minutes: 120 }])
+assert.deepEqual(categoryChanges(insightRecords, thisWeek, ['2026-09-01', '2026-09-02']), []) // too few recorded days to compare
+insightRecords['2026-09-24'] = dayOf(8, 0) // a fifth recorded day: study avg 8h / 5 = 1.6h, change +2.4h
+assert.deepEqual(categoryChanges(insightRecords, thisWeek, prevWeek)[0], { category: 'study', minutes: 140 }) // rounded to 10 minutes
+assert.equal(formatMinutes(40), '40분')
+assert.equal(formatMinutes(-120), '2시간')
+assert.equal(formatMinutes(150), '2시간 30분')
+assert.equal(subjectParticle('수면'), '이')
+assert.equal(subjectParticle('게임'), '이')
+assert.equal(subjectParticle('기타'), '가')
+assert.equal(subjectParticle('유튜브'), '가')
+assert.equal(subjectParticle('A'), '가')
+assert.equal(subjectParticle('2026'), '이') // 육
+assert.equal(subjectParticle('알바2'), '가') // 이
+
+assert.equal(recordingStreak(insightRecords, '2026-10-01'), 8) // 09-24 through 10-01
+assert.equal(recordingStreak(insightRecords, '2026-10-02'), 8) // today still blank keeps yesterday's streak
+assert.equal(recordingStreak(insightRecords, '2026-10-03'), 0) // a missed day breaks it
+assert.equal(recordingStreak({}, '2026-10-01'), 0)
 
 console.log('self-check passed')

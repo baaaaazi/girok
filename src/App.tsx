@@ -20,6 +20,7 @@ import {
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CUSTOM_CATEGORY_MAX, newCategoryId, readCategoryData, reassignCategory, removeCategory, categoryHours, upsertCategory, writeCategoryData } from './lib/categories'
+import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from './lib/insights'
 import { EMPTY_ROUTINE_DATA, clearRoutineData, dayComplete, dayProgress, ddayLabel, nearestGoal, readRoutineData, routineRates, writeRoutineData } from './lib/routines'
 import type { CategoryData, CustomCategory } from './types/category'
 import { ROUTINE_COLORS, type Goal, type RoutineData } from './types/routine'
@@ -456,6 +457,7 @@ function RecordPage({ date, display, data, goal, selection, showMultiHint, onSel
   const { meta, order } = useCategories()
   const day = data.records[date] ?? {}
   const recordedHours = Object.keys(day).length
+  const streak = isToday(date) ? recordingStreak(data.records, date) : 0
   const presence = categoryPresence(data.records, [date])
   const categories = presentCategories(presence, order)
   return <section className="record-page" aria-labelledby="record-title">
@@ -463,7 +465,7 @@ function RecordPage({ date, display, data, goal, selection, showMultiHint, onSel
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
       {goal && <DdayChip goal={goal} onOpen={onOpenRoutine} />}
       <div className="record-summary-row">
-        <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span></p>
+        <p className="record-summary"><strong>{recordedHours}<span> / 24</span></strong><span>시간 기록</span>{streak >= 2 && <span className="record-streak">{streak}일 연속</span>}</p>
         <button className={`select-mode-button ${selection ? 'select-mode-button-active' : ''}`} type="button" aria-pressed={selection !== null} onClick={() => onSelectionChange(selection ? null : [])}>
           {selection ? '선택 끝내기' : '여러 칸 선택'}
         </button>
@@ -840,7 +842,7 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
     <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0]}`}>
       {mode === 'day'
         ? <DayReview date={date} day={data.records[date] ?? {}} routineData={routineData} />
-        : <RangeReview records={data.records} routineData={routineData} dates={dates} mode={mode} onSelectDate={onSelectDate} />}
+        : <RangeReview records={data.records} routineData={routineData} dates={dates} previousDates={reviewDates(mode === 'week' ? shiftDate(date, -7) : shiftMonth(date, -1), mode)} mode={mode} onSelectDate={onSelectDate} />}
     </div>
   </section>
 }
@@ -889,7 +891,7 @@ function DayReview({ date, day, routineData }: { date: string; day: DayRecord; r
   </div>
 }
 
-function RangeReview({ records, routineData, dates, mode, onSelectDate }: { records: AppData['records']; routineData: RoutineData; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+function RangeReview({ records, routineData, dates, previousDates, mode, onSelectDate }: { records: AppData['records']; routineData: RoutineData; dates: string[]; previousDates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
   const { meta, order } = useCategories()
   const total = recordedHourCount(records, dates)
   const recordedDays = dates.filter((date) => Object.keys(records[date] ?? {}).length > 0).length
@@ -903,6 +905,7 @@ function RangeReview({ records, routineData, dates, mode, onSelectDate }: { reco
       <div><dt>하루 평균</dt><dd>{recordedDays ? Math.round(total / recordedDays * 10) / 10 : 0}<span>시간</span></dd></div>
     </dl>
     {present.length ? <>
+      <RangeInsights records={records} dates={dates} previousDates={previousDates} mode={mode} />
       <section className="range-card" aria-labelledby="share-title">
         <h2 id="share-title">무엇을 했나요</h2>
         <div className="share-bar" aria-hidden="true">
@@ -923,6 +926,24 @@ function RangeReview({ records, routineData, dates, mode, onSelectDate }: { reco
       </section>
     </> : <p className="activity-empty">이 기간에는 아직 기록이 없어요.</p>}
     <RoutineRates routineData={routineData} dates={dates} />
+  </section>
+}
+
+function RangeInsights({ records, dates, previousDates, mode }: { records: AppData['records']; dates: string[]; previousDates: string[]; mode: 'week' | 'month' }) {
+  const { meta } = useCategories()
+  const changes = categoryChanges(records, dates, previousDates)
+  if (!changes.length) return null
+  return <section className="range-card insight-card" aria-label="지난 기간과 비교">
+    <ul className="insight-list">
+      {changes.map(({ category, minutes }, index) => {
+        const { label } = meta(category)
+        return <li key={category} style={{ ...categoryStyle(meta, category), '--i': index } as StyleVars}>
+          <span className="legend-icon"><CategoryIcon category={category} /></span>
+          <p>{mode === 'week' ? '지난 7일보다' : '지난달보다'} {label}{subjectParticle(label)} 하루 평균 <strong>{formatMinutes(minutes)}</strong> {minutes > 0 ? '늘었어요' : '줄었어요'}</p>
+          <span className={`insight-trend ${minutes > 0 ? 'insight-up' : 'insight-down'}`} aria-hidden="true">{minutes > 0 ? '↑' : '↓'}</span>
+        </li>
+      })}
+    </ul>
   </section>
 }
 

@@ -211,6 +211,7 @@ h1, h2, h3, p { margin: 0; }
 .save-entry:disabled { cursor: default; opacity: 0.35; }
 .record-summary strong { color: var(--ink); font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .record-summary strong span { color: var(--muted); font-weight: 500; }
+.record-streak { margin-left: 2px; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); font-size: 11px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; animation: icon-pop 320ms var(--ease-pop) backwards; }
 .hour-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 560px; margin: 16px auto 0; }
 .hour-cell {
   position: relative;
@@ -339,6 +340,15 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .range-stats dd { margin: 4px 0 0; font-size: 24px; font-weight: 750; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .range-stats dd span { margin-left: 2px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; }
 .range-card { padding: 16px; }
+.insight-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.insight-list li { display: flex; align-items: center; gap: 10px; animation: cell-in 300ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
+.insight-list .legend-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: var(--cat-fill-color); color: var(--cat-ink-color); }
+.insight-list .legend-icon .category-icon { width: 17px; height: 17px; color: inherit; }
+.insight-list p { flex: 1; min-width: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.insight-list strong { color: var(--ink); font-weight: 700; }
+.insight-trend { flex: none; font-size: 15px; font-weight: 700; }
+.insight-up { color: var(--cat-ink-color); }
+.insight-down { color: var(--faint); }
 .range-card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .range-card-heading span { color: var(--faint); font-size: 12px; }
 .share-bar { display: flex; height: 14px; gap: 2px; margin-top: 14px; overflow: hidden; border-radius: 99px; }
@@ -678,7 +688,7 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
-  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon { animation: none; }
+  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak { animation: none; }
   .routine-progress-track span, .routine-check svg { transition: none; }
   button.routine-toggle:not(:disabled):active .routine-check, .icon-option:active, .color-option-selected, .icon-option-selected .category-icon { transform: none; }
   .entry-dialog, .entry-dialog[data-closing] { transform: none; transition-duration: 140ms; }
