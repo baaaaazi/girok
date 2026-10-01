@@ -47,4 +47,11 @@ Pushing to `main` deploys to https://baaaaazi.github.io/girok/ via `.github/work
 
 ## Roadmap status
 
-The routine roadmap (루틴 tab, calendar/review/D-day integration, notifications, custom record categories, review insights and recording streak) is complete. The user uses the web build day to day and plans to move to the APK once the app feels finished.
+The routine roadmap (루틴 tab, calendar/review/D-day integration, notifications, custom record categories, review insights and recording streak) is complete, plus a celebration pass on routine checks. The user uses the web build day to day and plans to move to the APK once the app feels finished.
+
+## Next up (agreed with the user, 2026-10-01)
+
+1. **1년 잔디 (year heatmap) — do this first.** In 돌아보기, a GitHub-style grid of the last 365 days, one small cell per day: fill intensity from that day's recorded hours, plus a small dot on days where every due routine was done (`dayComplete`, same as the calendar dot; check the dot stays legible at cell size and drop or restyle it if not). Tapping a day opens that date's record page. Keep it light ("과하지 않게"), mobile-first at 375/320px, dark mode first-class, entrance motion consistent with the rest; put any pure aggregation in `src/lib` with self-check assertions. Web and APK both.
+2. **홈 화면 위젯 (APK only) — after 1.** Android home-screen widget to see today's recorded hours and check today's routines without opening the app. Needs native Android code (AppWidgetProvider) reading the WebView's data, so plan the data bridge first. Do it when the user moves to the APK; also walk them through moving data from the web build via backup export/import.
+
+The user explicitly declined a streak-freeze feature.
