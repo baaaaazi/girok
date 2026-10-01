@@ -27,7 +27,7 @@ npm run build:android && (cd android && ./gradlew assembleDebug)
 # -> android/app/build/outputs/apk/debug/app-debug.apk (copy to release/girok.apk, which is gitignored)
 ```
 
-On-device checks use the `medium_phone` emulator and adb. Use single-gesture commands (`adb shell input draganddrop x1 y1 x2 y2 1500` for long-press-drag, `input swipe x y x y 1000` for long-press, `input keyevent 4` for back); separate `input motionevent` calls are not seen as one gesture. The WebView is debuggable in debug builds: `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` then drive it over CDP.
+On-device checks use the `medium_phone` emulator and adb. Call it as plain `adb` after `export PATH="$PATH:$LOCALAPPDATA/Android/Sdk/platform-tools"` (not through a `$ADB` variable), so the `Bash(adb *)` allow rule matches; commits, `./gradlew assembleDebug` and copying the APK to `release/` are allowed too, while `git push` (it deploys) still asks. Use single-gesture commands (`adb shell input draganddrop x1 y1 x2 y2 1500` for long-press-drag, `input swipe x y x y 1000` for long-press, `input keyevent 4` for back); separate `input motionevent` calls are not seen as one gesture. The WebView is debuggable in debug builds: `adb forward tcp:9333 localabstract:webview_devtools_remote_<pid>` then drive it over CDP.
 
 Pushing to `main` deploys to https://baaaaazi.github.io/girok/ via `.github/workflows/deploy.yml` (runs self-check, then `build:pages`).
 
