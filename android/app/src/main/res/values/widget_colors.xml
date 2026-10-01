@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget colors from the app's light tokens (src/styles.css); values-night has the dark ones. -->
+<resources>
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_ink">#171719</color>
+    <color name="widget_muted">#62626B</color>
+</resources>

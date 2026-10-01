@@ -9,6 +9,7 @@ import type { CategoryData } from '../src/types/category.ts'
 import { EMPTY_REMINDER_DATA, REMINDER_STORAGE_KEY, newReminderId, readReminderData, reminderNotificationIds, reminderOccurrences, removeReminder, timeLabel, upsertReminder, validateReminderData, writeReminderData } from '../src/lib/reminders.ts'
 import { heatDays, heatLevel, heatMonthLabels, heatMonths, heatSummary, heatWeeks } from '../src/lib/heatmap.ts'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
+import { applyWidgetOps, parseWidgetOps, widgetSnapshot } from '../src/lib/widget.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
 
@@ -416,5 +417,23 @@ assert.deepEqual(timeLabel('00:05'), { period: '오전', clock: '12:05' })
 assert.deepEqual(timeLabel('12:30'), { period: '오후', clock: '12:30' })
 assert.deepEqual(timeLabel('23:00'), { period: '오후', clock: '11:00' })
 bytes.clear()
+
+// Widget snapshot and the checks the widget queues while the app is closed.
+const widgetRoutines: RoutineData = toggleCheck([water, gym].reduce(upsertRoutine, EMPTY_ROUTINE_DATA), '2026-09-30', 'w')
+const widgetRecords: AppData['records'] = { '2026-10-01': { '7': { segments: [study, meal] }, '8': { segments: [{ category: 'c-gone', text: '' }] } } }
+const snapshot = widgetSnapshot(widgetRecords, widgetRoutines, EMPTY_CATEGORY_DATA, 'dark', '2026-10-01', '2026-09-30')
+assert.equal(snapshot.hours.length, 24)
+assert.deepEqual(snapshot.hours[7], [categoryMeta('study', EMPTY_CATEGORY_DATA).color, categoryMeta('meal', EMPTY_CATEGORY_DATA).color])
+assert.deepEqual(snapshot.hours[8], [categoryMeta('other', EMPTY_CATEGORY_DATA).color]) // deleted category renders as other
+assert.deepEqual(snapshot.hours[9], [])
+assert.deepEqual(snapshot.routines.map((routine) => [routine.id, routine.days]), [['w', null], ['g', [1, 3, 5]]])
+assert.deepEqual(snapshot.checks, { '2026-09-30': ['w'] })
+const ops = parseWidgetOps(JSON.stringify([{ date: '2026-10-01', id: 'w', done: true }, { date: '2026-09-30', id: 'w', done: true }, { date: '2026-10-01', id: 'gone', done: true }, { date: 'bad', id: 'w', done: true }]))
+assert.equal(ops.length, 3)
+const applied = applyWidgetOps(widgetRoutines, ops)
+assert.deepEqual(applied.checks, { '2026-09-30': ['w'], '2026-10-01': ['w'] }) // already-done op and deleted routine are no-ops
+assert.deepEqual(applyWidgetOps(applied, ops), applied)
+assert.equal(applyWidgetOps(applied, [{ date: '2026-10-01', id: 'w', done: false }]).checks['2026-10-01'], undefined)
+assert.deepEqual(parseWidgetOps('nope'), [])
 
 console.log('self-check passed')

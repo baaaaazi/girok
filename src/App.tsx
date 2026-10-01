@@ -28,7 +28,8 @@ import { ROUTINE_COLORS, type Goal, type RoutineData } from './types/routine'
 import { type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { RoutineIcon } from './icons'
 import { CategoryContext, CategoryDialog, CategoryIcon, CategorySettings, blankCategory, useCategories, type CategoryDraft } from './CategorySheet'
-import { exitApp, isNative, listenBackButton, shareBackup, syncReminders } from './native'
+import { exitApp, isNative, listenBackButton, shareBackup, syncReminders, takeWidgetOps, updateWidget } from './native'
+import { applyWidgetOps, widgetSnapshot } from './lib/widget'
 import { readReminderData, writeReminderData, type ReminderData } from './lib/reminders'
 import { ReminderSettings } from './ReminderSettings'
 import { RoutinePage } from './RoutinePage'
@@ -203,6 +204,29 @@ export default function App() {
     document.addEventListener('visibilitychange', refresh)
     return () => document.removeEventListener('visibilitychange', refresh)
   }, [])
+
+  // Checks made on the home-screen widget land here when the app opens or comes back; read storage
+  // rather than state so a check is never applied to an older copy of the routines.
+  useEffect(() => {
+    if (!isNative) return
+    const pull = () => {
+      if (document.visibilityState !== 'visible') return
+      void takeWidgetOps().then((ops) => {
+        if (!ops.length) return
+        const current = readRoutineData()
+        const next = applyWidgetOps(current, ops)
+        if (next !== current && writeRoutineData(next)) setRoutineData(next)
+      })
+    }
+    pull()
+    document.addEventListener('visibilitychange', pull)
+    return () => document.removeEventListener('visibilitychange', pull)
+  }, [])
+
+  const today = todayKey()
+  useEffect(() => {
+    if (isNative) void updateWidget(widgetSnapshot(data.records, routineData, categoryData, theme, today, shiftDate(today, -1)))
+  }, [data.records, routineData, categoryData, theme, today])
 
   const saveCategory = (draft: CategoryDraft): boolean => {
     const id = draft.id ?? newCategoryId()

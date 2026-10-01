@@ -1,5 +1,6 @@
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import { reminderNotificationIds, reminderOccurrences, type Reminder } from './lib/reminders'
+import { parseWidgetOps, type WidgetOp, type WidgetSnapshot } from './lib/widget'
 
 // True inside the Android app build; the web/PWA build keeps using browser APIs.
 export const isNative = Capacitor.isNativePlatform()
@@ -72,4 +73,19 @@ async function syncRemindersNow(reminders: Reminder[], prompt: boolean, previous
   } catch {
     return 'failed'
   }
+}
+
+// Home-screen widget (android/.../WidgetPlugin.java): the app pushes a snapshot after every change, and
+// collects the routine checks made on the widget while the app was closed.
+const GirokWidget = registerPlugin<{
+  update(options: { snapshot: string }): Promise<void>
+  takePending(): Promise<{ ops: string }>
+}>('GirokWidget')
+
+export async function updateWidget(snapshot: WidgetSnapshot): Promise<void> {
+  try { await GirokWidget.update({ snapshot: JSON.stringify(snapshot) }) } catch { /* The widget keeps its last snapshot. */ }
+}
+
+export async function takeWidgetOps(): Promise<WidgetOp[]> {
+  try { return parseWidgetOps((await GirokWidget.takePending()).ops) } catch { return [] }
 }

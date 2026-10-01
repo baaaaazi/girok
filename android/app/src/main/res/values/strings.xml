@@ -4,4 +4,6 @@
     <string name="title_activity_main">girok</string>
     <string name="package_name">io.github.baaaaazi.girok</string>
     <string name="custom_url_scheme">io.github.baaaaazi.girok</string>
+    <string name="widget_label">girok 오늘</string>
+    <string name="widget_description">오늘 기록한 시간과 오늘 루틴</string>
 </resources>
