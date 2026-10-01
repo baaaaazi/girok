@@ -9,7 +9,7 @@ import type { CategoryData } from '../src/types/category.ts'
 import { EMPTY_REMINDER_DATA, REMINDER_STORAGE_KEY, newReminderId, readReminderData, reminderNotificationIds, reminderOccurrences, removeReminder, timeLabel, upsertReminder, validateReminderData, writeReminderData } from '../src/lib/reminders.ts'
 import { heatDays, heatLevel, heatMonthLabels, heatMonths, heatSummary, heatWeeks } from '../src/lib/heatmap.ts'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
-import { applyWidgetOps, parseWidgetOps, widgetSnapshot } from '../src/lib/widget.ts'
+import { WIDGET_SETTINGS_KEY, applyWidgetOps, parseWidgetOps, readWidgetOpacity, widgetSnapshot, writeWidgetOpacity } from '../src/lib/widget.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
 
@@ -421,13 +421,18 @@ bytes.clear()
 // Widget snapshot and the checks the widget queues while the app is closed.
 const widgetRoutines: RoutineData = toggleCheck([water, gym].reduce(upsertRoutine, EMPTY_ROUTINE_DATA), '2026-09-30', 'w')
 const widgetRecords: AppData['records'] = { '2026-10-01': { '7': { segments: [study, meal] }, '8': { segments: [{ category: 'c-gone', text: '' }] } } }
-const snapshot = widgetSnapshot(widgetRecords, widgetRoutines, EMPTY_CATEGORY_DATA, 'dark', '2026-10-01', '2026-09-30')
+const snapshot = widgetSnapshot(widgetRecords, widgetRoutines, EMPTY_CATEGORY_DATA, 'dark', 60, '2026-10-01', '2026-09-30')
 assert.equal(snapshot.hours.length, 24)
 assert.deepEqual(snapshot.hours[7], [categoryMeta('study', EMPTY_CATEGORY_DATA).color, categoryMeta('meal', EMPTY_CATEGORY_DATA).color])
 assert.deepEqual(snapshot.hours[8], [categoryMeta('other', EMPTY_CATEGORY_DATA).color]) // deleted category renders as other
 assert.deepEqual(snapshot.hours[9], [])
 assert.deepEqual(snapshot.routines.map((routine) => [routine.id, routine.days]), [['w', null], ['g', [1, 3, 5]]])
 assert.deepEqual(snapshot.checks, { '2026-09-30': ['w'] })
+assert.equal(snapshot.opacity, 60)
+// Right-hand labels for today while undone / done: water ran only 09-30 so far, gym (Mon/Wed/Fri) is not due Thursday.
+assert.deepEqual(snapshot.routines[0].labels, ['', '🔥 2일'])
+const weeklySnapshot = widgetSnapshot({}, toggleCheck(upsertRoutine(EMPTY_ROUTINE_DATA, read), '2026-09-28', 'r'), EMPTY_CATEGORY_DATA, 'system', 100, '2026-10-01', '2026-09-30')
+assert.deepEqual(weeklySnapshot.routines[0].labels, ['이번 주 1/2', '이번 주 2/2'])
 const ops = parseWidgetOps(JSON.stringify([{ date: '2026-10-01', id: 'w', done: true }, { date: '2026-09-30', id: 'w', done: true }, { date: '2026-10-01', id: 'gone', done: true }, { date: 'bad', id: 'w', done: true }]))
 assert.equal(ops.length, 3)
 const applied = applyWidgetOps(widgetRoutines, ops)
@@ -435,5 +440,12 @@ assert.deepEqual(applied.checks, { '2026-09-30': ['w'], '2026-10-01': ['w'] }) /
 assert.deepEqual(applyWidgetOps(applied, ops), applied)
 assert.equal(applyWidgetOps(applied, [{ date: '2026-10-01', id: 'w', done: false }]).checks['2026-10-01'], undefined)
 assert.deepEqual(parseWidgetOps('nope'), [])
+assert.equal(readWidgetOpacity(), 100)
+assert.equal(writeWidgetOpacity(55), false)
+assert.equal(writeWidgetOpacity(40), true)
+assert.equal(readWidgetOpacity(), 40)
+bytes.set(WIDGET_SETTINGS_KEY, '{"opacity":"x"}')
+assert.equal(readWidgetOpacity(), 100)
+bytes.clear()
 
 console.log('self-check passed')

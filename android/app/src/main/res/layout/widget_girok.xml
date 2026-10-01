@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- The card color lives on its own view so the user's opacity setting can fade it (setImageAlpha). -->
+    <ImageView
+        android:id="@+id/widget_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg" />
+
+    <LinearLayout
+    android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/widget_bg"
     android:orientation="vertical"
     android:padding="16dp">
 
@@ -62,7 +74,7 @@
     <ImageView
         android:id="@+id/widget_bar"
         android:layout_width="match_parent"
-        android:layout_height="12dp"
+        android:layout_height="15dp"
         android:layout_marginTop="10dp"
         android:contentDescription="오늘 24시간 기록"
         android:scaleType="fitXY" />
@@ -82,4 +94,5 @@
         android:textColor="@color/widget_muted"
         android:textSize="12sp"
         android:visibility="gone" />
-</LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -603,6 +603,11 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
 .theme-swatch-system::after { position: absolute; inset: -1px -1px -1px 50%; background: var(--ink); content: ''; }
 .theme-swatch-light { background: #ffffff; }
 .theme-swatch-dark { background: #111113; }
+/* Widget opacity: the card color at that opacity over a checkerboard, so 투명 reads as see-through. */
+.opacity-swatch { width: 14px; height: 14px; border: 1px solid var(--line-strong); border-radius: 4px;
+  --fill: color-mix(in srgb, var(--ink) calc(var(--opacity) * 100%), transparent);
+  background: linear-gradient(var(--fill), var(--fill)),
+    repeating-conic-gradient(var(--line-strong) 0 25%, transparent 0 50%) 0 0 / 6px 6px; }
 .setting-actions { margin-top: 16px; }
 .outline-button { color: var(--ink); }
 .setting-hint { color: var(--muted); font-size: 12px; }

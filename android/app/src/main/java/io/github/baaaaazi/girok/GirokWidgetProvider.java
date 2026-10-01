@@ -39,10 +39,10 @@ public class GirokWidgetProvider extends AppWidgetProvider {
     // Layout heights in dp, used to work out how many routine rows fit.
     private static final int PADDING = 16;
     private static final int HEADER = 44;
-    private static final int BAR = 12 + 10;
+    private static final int BAR = 15 + 10;
     private static final int LIST_TOP = 8;
     private static final int ROW = 44;
-    private static final int ROW_MAX = 60; // rows grow toward this to fill a roomy widget (Android 12+)
+    private static final int ROW_MAX = 52; // rows grow toward this to fill a roomy widget (Android 12+)
     private static final int MORE = 20;
 
     // The app's light and dark tokens (src/styles.css) for when the user picked a theme in the app;
@@ -102,13 +102,15 @@ public class GirokWidgetProvider extends AppWidgetProvider {
         int[] palette = palette(context, snapshot);
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_girok);
         if (palette != null) {
-            views.setInt(R.id.widget_root, "setBackgroundResource", palette == DARK ? R.drawable.widget_bg_dark : R.drawable.widget_bg_light);
+            views.setImageViewResource(R.id.widget_bg, palette == DARK ? R.drawable.widget_bg_dark : R.drawable.widget_bg_light);
             views.setTextColor(R.id.widget_title, palette[0]);
             views.setTextColor(R.id.widget_hours, palette[0]);
             views.setTextColor(R.id.widget_subtitle, palette[1]);
             views.setTextColor(R.id.widget_hours_unit, palette[1]);
             views.setTextColor(R.id.widget_note, palette[1]);
         }
+        int opacity = snapshot == null ? 100 : Math.max(0, Math.min(100, snapshot.optInt("opacity", 100)));
+        views.setInt(R.id.widget_bg, "setImageAlpha", Math.round(opacity * 2.55f));
         PendingIntent open = openApp(context);
         views.setOnClickPendingIntent(R.id.widget_header, open);
         views.setOnClickPendingIntent(R.id.widget_bar, open);
@@ -139,7 +141,7 @@ public class GirokWidgetProvider extends AppWidgetProvider {
         int shown = due.size() * ROW <= available ? due.size() : Math.max(0, (available - MORE) / ROW);
         int rowHeight = shown == due.size() && shown > 0 ? Math.min(ROW_MAX, available / shown) : ROW;
         for (int i = 0; i < shown; i++) {
-            RemoteViews row = routineRow(context, snapshot, due.get(i), today, palette);
+            RemoteViews row = routineRow(context, snapshot, due.get(i), today, palette, current);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) row.setViewLayoutHeight(R.id.row_root, rowHeight, TypedValue.COMPLEX_UNIT_DIP);
             views.addView(R.id.widget_routines, row);
         }
@@ -154,12 +156,20 @@ public class GirokWidgetProvider extends AppWidgetProvider {
         manager.updateAppWidget(widgetId, views);
     }
 
-    private static RemoteViews routineRow(Context context, JSONObject snapshot, JSONObject routine, String today, int[] palette) {
+    private static RemoteViews routineRow(Context context, JSONObject snapshot, JSONObject routine, String today, int[] palette, boolean current) {
         String id = routine.optString("id");
         boolean checked = WidgetStore.isChecked(snapshot, today, id);
         RemoteViews row = new RemoteViews(context.getPackageName(), R.layout.widget_routine_row);
         row.setTextViewText(R.id.row_name, routine.optString("name"));
-        if (palette != null) row.setTextColor(R.id.row_name, palette[0]);
+        if (palette != null) {
+            row.setTextColor(R.id.row_name, palette[0]);
+            row.setTextColor(R.id.row_label, palette[1]);
+        }
+        // Streak / weekly count for today, done or not; a snapshot from an earlier day cannot know it.
+        JSONArray labels = current ? routine.optJSONArray("labels") : null;
+        String label = labels == null ? "" : labels.optString(checked ? 1 : 0, "");
+        row.setTextViewText(R.id.row_label, label);
+        row.setViewVisibility(R.id.row_label, label.isEmpty() ? View.GONE : View.VISIBLE);
         row.setFloat(R.id.row_name, "setAlpha", checked ? 0.45f : 1f);
         row.setImageViewBitmap(R.id.row_check, checkIcon(context, parseColor(routine.optString("color"), 0xFF8A8D96), checked));
         row.setContentDescription(R.id.row_root, routine.optString("name") + (checked ? ", 완료. 눌러서 취소" : ", 눌러서 완료"));
@@ -189,9 +199,9 @@ public class GirokWidgetProvider extends AppWidgetProvider {
         float gap = 2 * density;
         float groupGap = 5 * density;
         int width = Math.max(1, Math.round(widthDp * density));
-        int height = Math.round(12 * density);
+        int height = Math.round(15 * density);
         float cell = (width - gap * 20 - groupGap * 3) / 24f;
-        float radius = 2.5f * density;
+        float radius = 3 * density;
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);

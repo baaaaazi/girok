@@ -29,7 +29,7 @@ import { type Activity, type AppData, type CategoryId, type DayRecord, type Hour
 import { RoutineIcon } from './icons'
 import { CategoryContext, CategoryDialog, CategoryIcon, CategorySettings, blankCategory, useCategories, type CategoryDraft } from './CategorySheet'
 import { exitApp, isNative, listenBackButton, shareBackup, syncReminders, takeWidgetOps, updateWidget } from './native'
-import { applyWidgetOps, widgetSnapshot } from './lib/widget'
+import { WIDGET_OPACITIES, applyWidgetOps, readWidgetOpacity, widgetSnapshot, writeWidgetOpacity } from './lib/widget'
 import { readReminderData, writeReminderData, type ReminderData } from './lib/reminders'
 import { ReminderSettings } from './ReminderSettings'
 import { RoutinePage } from './RoutinePage'
@@ -140,6 +140,7 @@ export default function App() {
   const [monthCursor, setMonthCursor] = useState(() => monthStart(new Date()))
   const [reviewMode, setReviewMode] = useState<ReviewMode>('day')
   const [theme, setTheme] = useState<ThemeMode>(readTheme)
+  const [widgetOpacity, setWidgetOpacity] = useState(readWidgetOpacity)
   const [editorHours, setEditorHours] = useState<number[] | null>(null)
   // null = normal tapping; an array = multi-select mode (possibly still empty).
   const [selection, setSelection] = useState<number[] | null>(null)
@@ -225,8 +226,8 @@ export default function App() {
 
   const today = todayKey()
   useEffect(() => {
-    if (isNative) void updateWidget(widgetSnapshot(data.records, routineData, categoryData, theme, today, shiftDate(today, -1)))
-  }, [data.records, routineData, categoryData, theme, today])
+    if (isNative) void updateWidget(widgetSnapshot(data.records, routineData, categoryData, theme, widgetOpacity, today, shiftDate(today, -1)))
+  }, [data.records, routineData, categoryData, theme, widgetOpacity, today])
 
   const saveCategory = (draft: CategoryDraft): boolean => {
     const id = draft.id ?? newCategoryId()
@@ -426,6 +427,8 @@ export default function App() {
             theme={theme}
             clearArmed={clearArmed}
             onThemeChange={setTheme}
+            widgetOpacity={widgetOpacity}
+            onWidgetOpacityChange={(next) => { if (writeWidgetOpacity(next)) setWidgetOpacity(next) }}
             onImport={(next, nextRoutines, nextCategories) => {
               // Routines and categories first, so a failure there leaves the records unchanged. An older backup without them keeps the current ones.
               if (nextRoutines && !writeRoutineData(nextRoutines)) { showNotice({ text: '가져온 데이터를 저장하지 못했어요.', kind: 'error' }); return }
@@ -1220,7 +1223,7 @@ function MonthSummary({ records, dates }: { records: AppData['records']; dates: 
   </section>
 }
 
-function SettingsPage({ data, routineData, categoryData, reminderData, onRemindersChange, onAddCategory, onEditCategory, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
+function SettingsPage({ data, routineData, categoryData, reminderData, onRemindersChange, onAddCategory, onEditCategory, theme, clearArmed, onThemeChange, widgetOpacity, onWidgetOpacityChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
   data: AppData
   routineData: RoutineData
   categoryData: CategoryData
@@ -1231,6 +1234,8 @@ function SettingsPage({ data, routineData, categoryData, reminderData, onReminde
   theme: ThemeMode
   clearArmed: boolean
   onThemeChange: (theme: ThemeMode) => void
+  widgetOpacity: number
+  onWidgetOpacityChange: (opacity: number) => void
   onImport: (data: AppData, routineData: RoutineData | null, categoryData: CategoryData | null) => void
   onNotice: (notice: NoticeContent) => void
   onArmClear: () => void
@@ -1287,6 +1292,16 @@ function SettingsPage({ data, routineData, categoryData, reminderData, onReminde
         </div>
       </section>
       <ReminderSettings data={reminderData} onChange={onRemindersChange} />
+      {isNative && <section className="setting-section" aria-labelledby="widget-title">
+        <div className="setting-heading"><div><h2 id="widget-title">홈 화면 위젯</h2><p>위젯 배경을 얼마나 비칠지 골라요. 투명할수록 배경화면에 따라 글씨가 덜 보일 수 있어요.</p></div></div>
+        <div className="theme-options" role="radiogroup" aria-label="위젯 배경 투명도">
+          {WIDGET_OPACITIES.map((opacity) => <label key={opacity} className={`theme-option ${widgetOpacity === opacity ? 'theme-option-selected' : ''}`}>
+            <input className="visually-hidden" type="radio" name="widget-opacity" value={opacity} checked={widgetOpacity === opacity} onChange={() => onWidgetOpacityChange(opacity)} />
+            <span className="opacity-swatch" style={{ '--opacity': opacity / 100 } as StyleVars} aria-hidden="true" />
+            <span>{opacity === 100 ? '불투명' : opacity === 0 ? '투명' : `${opacity}%`}</span>
+          </label>)}
+        </div>
+      </section>}
       <CategorySettings data={categoryData} records={data.records} onAdd={onAddCategory} onEdit={onEditCategory} />
       <section className="setting-section" aria-labelledby="backup-title">
         <div className="setting-heading">
