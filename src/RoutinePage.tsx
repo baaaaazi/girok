@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type CSSProperties, type FormEvent } from 'react'
+import { useId, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react'
 import { WEEKDAYS_SHORT, displayDate, parseDateKey, shiftDate } from './lib/date'
 import {
   NAME_MAX_LENGTH,
@@ -8,6 +8,7 @@ import {
   isChecked,
   isDue,
   newId,
+  perfectStreak,
   removeGoal,
   removeRoutine,
   repeatLabel,
@@ -60,6 +61,11 @@ export function RoutinePage({ date, today, data, onChange, onPrevious, onNext, o
   const [editingGoal, setEditingGoal] = useState<GoalDraft | null>(null)
   // Only the row the user just checked plays the pop, not every done row on mount.
   const [popped, setPopped] = useState<string | null>(null)
+  // Bumped when a check finishes the day, so the celebration replays each time it is earned.
+  const [celebration, setCelebration] = useState(0)
+  // A different day starts quiet: no leftover pop or confetti from the one just left.
+  const [shownDate, setShownDate] = useState(date)
+  if (shownDate !== date) { setShownDate(date); setPopped(null); setCelebration(0) }
   const future = date > today
   const streakDate = future ? today : date
   const due = data.routines.filter((routine) => isDue(routine, date))
@@ -67,10 +73,21 @@ export function RoutinePage({ date, today, data, onChange, onPrevious, onNext, o
   const { done, total } = dayProgress(data, date)
   const goals = sortedGoals(data.goals)
 
+  const complete = total > 0 && done === total
+  const dueColors = due.map((routine) => ROUTINE_COLORS[routine.color])
+  const perfectRun = complete ? perfectStreak(data, date) : 0
+
   const toggle = (routine: Routine) => {
     const checking = !isChecked(data, date, routine.id)
-    if (!onChange(toggleCheck(data, date, routine.id))) return
-    if (checking) { navigator.vibrate?.(10); setPopped(routine.id) } else setPopped(null)
+    const next = toggleCheck(data, date, routine.id)
+    if (!onChange(next)) return
+    if (!checking) { setPopped(null); return }
+    setPopped(routine.id)
+    const after = dayProgress(next, date)
+    if (after.total > 0 && after.done === after.total) {
+      navigator.vibrate?.([18, 70, 26, 70, 40])
+      setCelebration((count) => count + 1)
+    } else navigator.vibrate?.(18)
   }
 
   return <section className="section-page routine-page" aria-labelledby="routine-title">
@@ -106,13 +123,20 @@ export function RoutinePage({ date, today, data, onChange, onPrevious, onNext, o
       </div>
       <button className="save-entry routine-add-primary" type="button" onClick={() => setEditingRoutine(BLANK_ROUTINE)}>새 루틴 만들기</button>
     </div> : <>
-      <div className="routine-progress" data-complete={total > 0 && done === total ? '' : undefined}>
+      <div className="routine-progress" data-complete={complete ? '' : undefined}>
+        {complete && celebration > 0 && <Confetti key={celebration} colors={dueColors} />}
         <div className="routine-progress-row">
           <h2>{date === today ? '오늘의 루틴' : '이날의 루틴'}</h2>
-          <p><strong>{done}</strong><span> / {total}</span></p>
+          <p><strong key={done} className={popped ? 'routine-count-bump' : undefined}>{done}</strong><span> / {total}</span></p>
         </div>
-        <div className="routine-progress-track" aria-hidden="true"><span style={{ transform: `scaleX(${total ? done / total : 0})` }} /></div>
-        {total > 0 && done === total && <p className="routine-progress-note">{date === today ? '오늘 루틴을 모두 마쳤어요' : '이날 루틴을 모두 마쳤어요'}</p>}
+        <div className="routine-progress-track" aria-hidden="true">
+          <span style={{ transform: `scaleX(${total ? done / total : 0})`, ...(complete ? { backgroundImage: progressGradient(dueColors) } : {}) }} />
+          {complete && celebration > 0 && <i key={celebration} className="routine-progress-shine" />}
+        </div>
+        {complete && <p key={celebration} className={`routine-progress-note ${celebration > 0 ? 'routine-progress-note-earned' : ''}`}>
+          {date === today ? '오늘 루틴을 모두 마쳤어요' : '이날 루틴을 모두 마쳤어요'}
+          {perfectRun >= 2 && <span className="routine-perfect-streak"> · 🔥 {perfectRun}일 연속 완료</span>}
+        </p>}
         {future && <p className="routine-progress-note routine-progress-muted">아직 오지 않은 날은 체크할 수 없어요</p>}
       </div>
 
@@ -123,10 +147,12 @@ export function RoutinePage({ date, today, data, onChange, onPrevious, onNext, o
           const meta = routine.repeat.kind === 'weekly'
             ? `이번 주 ${weekCount(data, routine.id, date)}/${routine.repeat.times}${count ? ` · ${count}주 연속` : ''}`
             : `${repeatLabel(routine.repeat)}${count ? ` · ${count}일 연속` : ''}`
-          return <li key={routine.id} className={`routine-row ${checked ? 'routine-row-done' : ''}`} style={{ ...colorStyle(routine.color), '--i': index } as StyleVars}>
+          const justChecked = checked && popped === routine.id
+          return <li key={routine.id} className={`routine-row ${checked ? 'routine-row-done' : ''} ${justChecked ? 'routine-row-pop' : ''}`} style={{ ...colorStyle(routine.color), '--i': index } as StyleVars}>
             <button type="button" className="routine-toggle" aria-pressed={checked} disabled={future} onClick={() => toggle(routine)}>
-              <span className={`routine-check ${checked && popped === routine.id ? 'routine-check-pop' : ''}`} aria-hidden="true">
+              <span className={`routine-check ${justChecked ? 'routine-check-pop' : ''}`} aria-hidden="true">
                 <svg viewBox="0 0 16 16"><path d="m4 8.4 2.6 2.6L12 5.4" /></svg>
+                {justChecked && <span className="routine-burst">{BURST_ANGLES.map((angle) => <i key={angle} style={{ '--a': `${angle}deg` } as StyleVars} />)}</span>}
               </span>
               <span className="routine-icon"><RoutineIcon icon={routine.icon} /></span>
               <span className="routine-copy">
@@ -181,6 +207,39 @@ export function RoutinePage({ date, today, data, onChange, onPrevious, onNext, o
       onDelete={(id) => onChange(removeGoal(data, id))}
     />}
   </section>
+}
+
+const BURST_ANGLES = [0, 60, 120, 180, 240, 300]
+const CONFETTI_COUNT = 18
+const CONFETTI_FALLBACK = Object.values(ROUTINE_COLORS)
+
+// A finished day paints the bar in the colors of that day's routines.
+function progressGradient(colors: string[]): string {
+  const stops = colors.length > 1 ? colors : [colors[0], colors[0]]
+  return `linear-gradient(90deg, ${stops.join(', ')})`
+}
+
+// A one-off burst from the progress card when the day's last routine is checked.
+// Pieces get random spread on mount; a new `key` remounts it for the next celebration.
+function Confetti({ colors }: { colors: string[] }) {
+  const pieces = useMemo(() => Array.from({ length: CONFETTI_COUNT }, (_, index) => {
+    const palette = colors.length ? colors : CONFETTI_FALLBACK
+    const spread = (index / (CONFETTI_COUNT - 1) - 0.5) * 2 // -1..1, so pieces fan out evenly
+    return {
+      color: palette[index % palette.length],
+      dx: Math.round(spread * 130 + (Math.random() - 0.5) * 30),
+      dy: Math.round(-50 - Math.random() * 60),
+      fall: Math.round(70 + Math.random() * 50),
+      rot: Math.round((Math.random() - 0.5) * 720),
+      delay: Math.round(Math.random() * 60),
+      wide: index % 3 === 0,
+    }
+  }), [])
+  return <span className="confetti" aria-hidden="true">
+    {pieces.map((piece, index) => <i key={index} className={piece.wide ? 'confetti-wide' : undefined} style={{
+      background: piece.color, '--dx': `${piece.dx}px`, '--dy': `${piece.dy}px`, '--fall': `${piece.fall}px`, '--rot': `${piece.rot}deg`, animationDelay: `${piece.delay}ms`,
+    } as StyleVars} />)}
+  </span>
 }
 
 function RoutineDialog({ draft, onClosed, onSave, onDelete }: {

@@ -232,3 +232,20 @@ export function routineRates(data: RoutineData, dates: string[], today: string):
     return total ? [{ routine, done: Math.min(done, total), total }] : []
   })
 }
+
+// Consecutive days on which every due routine was done (the calendar dot), ending at `date`;
+// a still-unfinished `date` counts through the day before. Days with nothing due neither count nor break it.
+export function perfectStreak(data: RoutineData, date: string): number {
+  if (!data.routines.length) return 0
+  const first = data.routines.reduce((min, routine) => routine.createdAt < min ? routine.createdAt : min, data.routines[0].createdAt)
+  let day = dayComplete(data, date) ? date : shiftDate(date, -1)
+  let count = 0
+  while (day >= first) {
+    if (dayProgress(data, day).total > 0) {
+      if (!dayComplete(data, day)) break
+      count += 1
+    }
+    day = shiftDate(day, -1)
+  }
+  return count
+}

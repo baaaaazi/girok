@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
 import { categoryPresence, presentCategories, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { CORRUPT_BACKUP_KEY, EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
-import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete, dayProgress, ddayLabel, isDue, nearestGoal, readRoutineData, removeRoutine, routineRates, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
+import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete, perfectStreak, dayProgress, ddayLabel, isDue, nearestGoal, readRoutineData, removeRoutine, routineRates, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
 import { backupFile } from '../src/lib/storage.ts'
 import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
 import type { CategoryData } from '../src/types/category.ts'
@@ -191,6 +191,10 @@ assert.equal(dayComplete(routineData, '2026-09-30'), true) // water and gym done
 assert.equal(dayComplete(routineData, '2026-09-29'), true) // gym not due on Tuesday
 assert.equal(dayComplete(routineData, '2026-10-01'), false) // water missed
 assert.equal(dayComplete(routineData, '2026-09-19'), false) // nothing existed yet
+assert.equal(perfectStreak(routineData, '2026-09-30'), 3) // 28 Mon, 29 Tue (gym rests), 30 Wed
+assert.equal(perfectStreak(routineData, '2026-10-01'), 3) // today unfinished still shows the run through yesterday
+assert.equal(perfectStreak(routineData, '2026-10-02'), 0) // 10-01 was missed
+assert.equal(perfectStreak(EMPTY_ROUTINE_DATA, '2026-10-01'), 0)
 const weeklyOnly: RoutineData = { ...routineData, routines: [read] }
 assert.equal(dayComplete(weeklyOnly, '2026-09-28'), true)
 assert.equal(dayComplete(weeklyOnly, '2026-09-29'), false)

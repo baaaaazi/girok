@@ -436,6 +436,28 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
 .routine-row-done .routine-check svg { stroke-dashoffset: 0; }
 .routine-check-pop { animation: check-pop 360ms var(--ease-pop); }
 @keyframes check-pop { 0% { scale: 0.7; } 60% { scale: 1.18; } 100% { scale: 1; } }
+.routine-check { position: relative; }
+.routine-burst { position: absolute; inset: 0; pointer-events: none; }
+.routine-burst i { position: absolute; top: 50%; left: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: var(--category); opacity: 0; animation: burst 480ms var(--ease-out) 30ms; }
+@keyframes burst { 0% { opacity: 1; transform: rotate(var(--a)) translateY(-12px) scale(1); } 60% { opacity: 1; } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-30px) scale(0.5); } }
+.routine-row-pop::after { position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--category) 26%, transparent) 50%, transparent 65%) no-repeat; background-size: 260% 100%; content: ''; pointer-events: none; animation: row-sweep 620ms var(--ease-out) 80ms backwards; }
+@keyframes row-sweep { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.routine-count-bump { display: inline-block; animation: check-pop 360ms var(--ease-pop); }
+.routine-progress { position: relative; }
+.routine-progress-track { position: relative; transition: height 260ms var(--ease-out); }
+.routine-progress-shine { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.75) 50%, transparent 70%) no-repeat; background-size: 250% 100%; animation: row-sweep 900ms var(--ease-out) 260ms backwards; }
+.routine-progress[data-complete] .routine-progress-track { height: 8px; }
+.routine-progress-note-earned { font-size: 13px; animation: note-in 420ms var(--ease-pop) 180ms backwards; }
+@keyframes note-in { from { opacity: 0; transform: translateY(6px) scale(0.96); } }
+.routine-perfect-streak { color: var(--muted); font-weight: 600; }
+.confetti { position: absolute; inset: -70px 0 -40px; overflow: hidden; pointer-events: none; }
+.confetti i { position: absolute; top: 96px; left: 50%; width: 6px; height: 9px; margin-left: -3px; border-radius: 2px; opacity: 0; animation: confetti 1100ms forwards; }
+.confetti i.confetti-wide { width: 9px; height: 5px; }
+@keyframes confetti {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0deg) scale(0.6); animation-timing-function: cubic-bezier(0.23, 1, 0.32, 1); }
+  45% { opacity: 1; transform: translate(var(--dx), var(--dy)) rotate(calc(var(--rot) * 0.5)) scale(1); animation-timing-function: cubic-bezier(0.55, 0, 1, 0.45); }
+  100% { opacity: 0; transform: translate(calc(var(--dx) * 1.15), calc(var(--dy) + var(--fall))) rotate(var(--rot)) scale(0.9); }
+}
 .routine-icon { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border-radius: 10px; background: var(--cat-fill-color); }
 .routine-row-done .routine-icon { background: var(--surface-raised); }
 .routine-icon .category-icon { width: 19px; height: 19px; }
@@ -704,7 +726,8 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
-  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak, .reminder-row { animation: none; }
+  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak, .reminder-row, .routine-count-bump, .routine-progress-note-earned { animation: none; }
+  .confetti, .routine-burst, .routine-row-pop::after, .routine-progress-shine { display: none; }
   .switch span { transition-duration: 0ms; }
   .routine-progress-track span, .routine-check svg { transition: none; }
   button.routine-toggle:not(:disabled):active .routine-check, .icon-option:active, .color-option-selected, .icon-option-selected .category-icon { transform: none; }
