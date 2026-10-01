@@ -1,6 +1,8 @@
+import { isCategoryId, validateCategoryData } from './categories.ts'
 import { validateRoutineData } from './routines.ts'
+import type { CategoryData } from '../types/category.ts'
 import type { RoutineData } from '../types/routine.ts'
-import { CATEGORY_IDS, type Activity, type AppData, type DayRecord, type HourRecord, type LegacyAppData, type LegacyDayRecord } from '../types/record.ts'
+import { type Activity, type AppData, type DayRecord, type HourRecord, type LegacyAppData, type LegacyDayRecord } from '../types/record.ts'
 
 export const LEGACY_STORAGE_KEY = 'girok:data:v1'
 export const STORAGE_KEY = 'girok:data:v2'
@@ -8,7 +10,6 @@ export const THEME_KEY = 'girok:theme:v1'
 export const CORRUPT_BACKUP_KEY = 'girok:data:v2:unreadable'
 export const EMPTY_DATA: AppData = { version: 2, records: {} }
 
-const categorySet = new Set<string>(CATEGORY_IDS)
 const hourPattern = /^(?:[0-9]|1[0-9]|2[0-3])$/
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -24,7 +25,7 @@ function validDateKey(value: string): boolean {
 
 function validActivity(value: unknown): value is Activity {
   if (!isPlainObject(value)) return false
-  return categorySet.has(String(value.category)) && typeof value.text === 'string' && value.text.length <= 500
+  return isCategoryId(value.category) && typeof value.text === 'string' && value.text.length <= 500
 }
 
 function validLegacyDay(value: unknown): value is LegacyDayRecord {
@@ -113,22 +114,25 @@ export function writeData(data: AppData): boolean {
   }
 }
 
-export type BackupFile = AppData & { routineData?: RoutineData }
+export type BackupFile = AppData & { routineData?: RoutineData; categoryData?: CategoryData }
 
-// Backups carry routines next to the records; older apps ignore the extra field.
-export function backupFile(data: AppData, routineData: RoutineData): BackupFile {
-  return { version: 2, records: data.records, routineData }
+// Backups carry routines and custom categories next to the records; older apps ignore the extra fields.
+export function backupFile(data: AppData, routineData: RoutineData, categoryData: CategoryData): BackupFile {
+  return { version: 2, records: data.records, routineData, categoryData }
 }
 
-// `routineData` is null when the file has none (an older backup), so current routines can be kept.
-export function parseImportedData(raw: string): { data: AppData; routineData: RoutineData | null; migrated: boolean } | { error: string } {
+export type ImportedData = { data: AppData; routineData: RoutineData | null; categoryData: CategoryData | null; migrated: boolean }
+
+// `routineData`/`categoryData` are null when the file has none (an older backup), so the current ones can be kept.
+export function parseImportedData(raw: string): ImportedData | { error: string } {
   const parsed = parseCanonical(raw)
   if (!parsed) return { error: 'girok 백업 형식과 일치하지 않아요.' }
-  let routineData: unknown
-  try { routineData = (JSON.parse(raw) as { routineData?: unknown }).routineData } catch { routineData = undefined }
-  if (routineData === undefined) return { ...parsed, routineData: null }
-  if (!validateRoutineData(routineData)) return { error: '백업 파일의 루틴 데이터가 올바르지 않아요.' }
-  return { ...parsed, routineData }
+  let extras: { routineData?: unknown; categoryData?: unknown }
+  try { extras = JSON.parse(raw) as typeof extras } catch { extras = {} }
+  const { routineData, categoryData } = extras
+  if (routineData !== undefined && !validateRoutineData(routineData)) return { error: '백업 파일의 루틴 데이터가 올바르지 않아요.' }
+  if (categoryData !== undefined && !validateCategoryData(categoryData)) return { error: '백업 파일의 카테고리 데이터가 올바르지 않아요.' }
+  return { ...parsed, routineData: routineData ?? null, categoryData: categoryData ?? null }
 }
 
 export function replaceData(data: AppData): boolean {

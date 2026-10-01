@@ -19,7 +19,7 @@ import {
   weekCount,
 } from './lib/routines'
 import { ROUTINE_COLORS, ROUTINE_COLOR_IDS, ROUTINE_ICON_IDS, type Goal, type Routine, type RoutineColorId, type RoutineData, type RoutineIconId, type RoutineRepeat } from './types/routine'
-import { RoutineIcon } from './icons'
+import { ICON_LABELS, RoutineIcon } from './icons'
 import { useSheet } from './sheet'
 
 type StyleVars = CSSProperties & Record<`--${string}`, string | number>
@@ -27,10 +27,6 @@ type RoutineDraft = Omit<Routine, 'id' | 'createdAt'> & { id?: string; createdAt
 type GoalDraft = Omit<Goal, 'id' | 'createdAt'> & { id?: string; createdAt?: string }
 
 const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0] // Monday-first reads more naturally for picking days.
-const ICON_LABELS: Record<RoutineIconId, string> = {
-  check: '체크', water: '물', book: '책', pen: '펜', run: '달리기', dumbbell: '운동', moon: '달', sun: '해',
-  heart: '하트', pill: '약', leaf: '잎', music: '음악', meal: '식사', clean: '청소', money: '돈', star: '별',
-}
 const COLOR_LABELS: Record<RoutineColorId, string> = {
   blue: '파랑', violet: '보라', orange: '주황', teal: '청록', yellow: '노랑', pink: '분홍', green: '초록', gray: '회색',
 }

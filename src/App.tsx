@@ -19,10 +19,13 @@ import {
 } from './lib/date'
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
+import { CUSTOM_CATEGORY_MAX, newCategoryId, readCategoryData, reassignCategory, removeCategory, categoryHours, upsertCategory, writeCategoryData } from './lib/categories'
 import { EMPTY_ROUTINE_DATA, clearRoutineData, dayComplete, dayProgress, ddayLabel, nearestGoal, readRoutineData, routineRates, writeRoutineData } from './lib/routines'
+import type { CategoryData, CustomCategory } from './types/category'
 import { ROUTINE_COLORS, type Goal, type RoutineData } from './types/routine'
-import { CATEGORY_IDS, CATEGORY_META, type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
-import { CategoryIcon, RoutineIcon } from './icons'
+import { type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
+import { RoutineIcon } from './icons'
+import { CategoryContext, CategoryDialog, CategoryIcon, CategorySettings, blankCategory, useCategories, type CategoryDraft } from './CategorySheet'
 import { exitApp, isNative, listenBackButton, shareBackup } from './native'
 import { RoutinePage } from './RoutinePage'
 
@@ -54,18 +57,20 @@ function readTheme(): ThemeMode {
   }
 }
 
-function categoryStyle(category: CategoryId): StyleVars {
-  return { '--category': CATEGORY_META[category].color }
+type CategoryLookup = ReturnType<typeof useCategories>['meta']
+
+function categoryStyle(meta: CategoryLookup, category: CategoryId): StyleVars {
+  return { '--category': meta(category).color }
 }
 
-function categoryPairStyle(categories: CategoryId[]): StyleVars {
+function categoryPairStyle(meta: CategoryLookup, categories: CategoryId[]): StyleVars {
   return categories.length === 2
     ? {
-        '--category': CATEGORY_META[categories[0]].color,
-        '--category-a': CATEGORY_META[categories[0]].color,
-        '--category-b': CATEGORY_META[categories[1]].color,
+        '--category': meta(categories[0]).color,
+        '--category-a': meta(categories[0]).color,
+        '--category-b': meta(categories[1]).color,
       }
-    : categoryStyle(categories[0])
+    : categoryStyle(meta, categories[0])
 }
 
 function makeHourRecord(activities: Activity[]): HourRecord | null {
@@ -120,6 +125,9 @@ const NAV_ITEMS: Array<{ id: Page; label: string; icon: string }> = [
 export default function App() {
   const [data, setData] = useState<AppData>(() => readData())
   const [routineData, setRoutineData] = useState<RoutineData>(() => readRoutineData())
+  const [categoryData, setCategoryData] = useState<CategoryData>(() => readCategoryData())
+  // `onCreated` lets the entry sheet pick a category the moment it is added from there.
+  const [editingCategory, setEditingCategory] = useState<{ draft: CategoryDraft; onCreated?: (id: string) => void } | null>(null)
   const [page, setPage] = useState<Page>('record')
   const [selectedDate, setSelectedDate] = useState(todayKey)
   const [monthCursor, setMonthCursor] = useState(() => monthStart(new Date()))
@@ -156,6 +164,34 @@ export default function App() {
     return true
   }
 
+  const commitCategories = (next: CategoryData): boolean => {
+    if (!writeCategoryData(next)) {
+      showNotice({ text: '카테고리를 저장하지 못했어요.', kind: 'error' })
+      return false
+    }
+    setCategoryData(next)
+    return true
+  }
+
+  const saveCategory = (draft: CategoryDraft): boolean => {
+    const id = draft.id ?? newCategoryId()
+    if (!commitCategories(upsertCategory(categoryData, { id, name: draft.name, icon: draft.icon, color: draft.color }))) return false
+    if (!draft.id) editingCategory?.onCreated?.(id)
+    return true
+  }
+
+  const deleteCategory = (id: string): boolean => {
+    const category = categoryData.categories.find((item) => item.id === id)
+    if (!category) return false
+    const used = categoryHours(data.records, id)
+    if (!window.confirm(used
+      ? `'${category.name}' 카테고리를 지울까요? 이 카테고리로 남긴 ${used}시간은 '기타'로 바뀌어요.`
+      : `'${category.name}' 카테고리를 지울까요?`)) return false
+    // Records first, so a failure leaves the category in place rather than orphaning its hours.
+    if (used && !commitData(reassignCategory(data, id, 'other'))) return false
+    return commitCategories(removeCategory(categoryData, id))
+  }
+
   const saveHours = (hours: number[], activities: Activity[]) => commitData(replaceHours(data, selectedDate, hours, makeHourRecord(activities)))
   const deleteHours = (hours: number[]) => commitData(replaceHours(data, selectedDate, hours, null))
   const navigateDate = (amount: number) => setSelectedDate((current) => shiftDate(current, amount))
@@ -188,7 +224,8 @@ export default function App() {
 
   const backHandler = useRef(() => {})
   backHandler.current = () => {
-    const dialog = document.querySelector<HTMLDialogElement>('dialog[open]')
+    // The last open dialog is the topmost one (a category sheet opened over the entry sheet).
+    const dialog = [...document.querySelectorAll<HTMLDialogElement>('dialog[open]')].pop()
     if (dialog) dialog.dispatchEvent(new Event('cancel', { cancelable: true }))
     else if (selection) setSelection(null)
     else if (page !== 'record') navigate('record')
@@ -252,6 +289,7 @@ export default function App() {
   const selectedDay = data.records[selectedDate] ?? {}
 
   return (
+    <CategoryContext.Provider value={categoryData}>
     <div className="app-shell">
       <header className="app-topbar">
         <div className="brand-lockup" aria-label="girok">
@@ -324,13 +362,18 @@ export default function App() {
           <SettingsPage
             data={data}
             routineData={routineData}
+            categoryData={categoryData}
+            onAddCategory={() => setEditingCategory({ draft: blankCategory(categoryData) })}
+            onEditCategory={(category) => setEditingCategory({ draft: category })}
             theme={theme}
             clearArmed={clearArmed}
             onThemeChange={setTheme}
-            onImport={(next, nextRoutines) => {
-              // Routines first, so a failure there leaves everything unchanged. An older backup without routines keeps the current ones.
+            onImport={(next, nextRoutines, nextCategories) => {
+              // Routines and categories first, so a failure there leaves the records unchanged. An older backup without them keeps the current ones.
               if (nextRoutines && !writeRoutineData(nextRoutines)) { showNotice({ text: '가져온 데이터를 저장하지 못했어요.', kind: 'error' }); return }
               if (nextRoutines) setRoutineData(nextRoutines)
+              if (nextCategories && !writeCategoryData(nextCategories)) { showNotice({ text: '카테고리를 복원하지 못해 기록은 그대로 두었어요.', kind: 'error' }); return }
+              if (nextCategories) setCategoryData(nextCategories)
               if (replaceData(next)) {
                 setData(next)
                 showNotice({ text: '백업 파일을 복원했어요.', kind: 'success' })
@@ -365,9 +408,22 @@ export default function App() {
           onClose={(changed) => { setEditorHours(null); if (changed) setSelection(null) }}
           onSave={(activities) => saveHours(editorHours, activities)}
           onDelete={() => deleteHours(editorHours)}
+          onAddCategory={categoryData.categories.length < CUSTOM_CATEGORY_MAX
+            ? (onCreated) => setEditingCategory({ draft: blankCategory(categoryData), onCreated })
+            : undefined}
+        />
+      )}
+      {editingCategory && (
+        <CategoryDialog
+          draft={editingCategory.draft}
+          data={categoryData}
+          onClosed={() => setEditingCategory(null)}
+          onSave={saveCategory}
+          onDelete={deleteCategory}
         />
       )}
     </div>
+    </CategoryContext.Provider>
   )
 }
 
@@ -397,10 +453,11 @@ function RecordPage({ date, display, data, goal, selection, showMultiHint, onSel
   onOpenReview: () => void
   onOpenRoutine: () => void
 }) {
+  const { meta, order } = useCategories()
   const day = data.records[date] ?? {}
   const recordedHours = Object.keys(day).length
   const presence = categoryPresence(data.records, [date])
-  const categories = presentCategories(presence)
+  const categories = presentCategories(presence, order)
   return <section className="record-page" aria-labelledby="record-title">
     <div className={`record-main ${selection ? 'record-main-selecting' : ''}`}>
       <DateHeader date={date} display={display} onPrevious={onPrevious} onNext={onNext} onToday={onToday} />
@@ -415,9 +472,9 @@ function RecordPage({ date, display, data, goal, selection, showMultiHint, onSel
       {!selection && showMultiHint && <p className="grid-hint">칸을 길게 누른 채 끌면 여러 칸을 한 번에 기록할 수 있어요.</p>}
       {categories.length > 0 && <div className="record-categories">
         <ul aria-label="기록한 카테고리">
-          {categories.map((category) => <li key={category} style={categoryStyle(category)}>
+          {categories.map((category) => <li key={category} style={categoryStyle(meta, category)}>
             <CategoryIcon category={category} />
-            <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}</span>
+            <span>{meta(category).label}</span><span className="presence-count">{presence[category]}</span>
           </li>)}
         </ul>
         <button className="overview-link" type="button" onClick={onOpenReview}>하루 돌아보기 <span aria-hidden="true">→</span></button>
@@ -522,6 +579,7 @@ function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
   onSelectionChange: Dispatch<SetStateAction<number[] | null>>
   onOpenHours: (hours: number[]) => void
 }) {
+  const { meta } = useCategories()
   const currentHour = isToday(date) ? new Date().getHours() : -1
   const gridRef = useRef<HTMLDivElement>(null)
   const press = useRef<{ pointerId: number; hour: number; x: number; y: number; timer: number } | null>(null)
@@ -634,7 +692,7 @@ function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
     {hours().map((hour) => {
       const record = day[String(hour)]
       const segments: Activity[] = record ? [...record.segments] : []
-      const categories = segments.map((activity) => CATEGORY_META[activity.category].label)
+      const categories = segments.map((activity) => meta(activity.category).label)
       const categoryLabel = categories.join(' · ')
       const descriptor = segments.length === 2 ? `함께 기록 ${categoryLabel}` : categoryLabel || '비어 있음'
       const isSelected = selected.has(hour)
@@ -643,7 +701,7 @@ function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
         type="button"
         data-hour={hour}
         className={`hour-cell ${segments.length ? 'hour-cell-filled' : 'hour-cell-empty'} ${segments.length === 2 ? 'hour-cell-dual' : ''} ${currentHour === hour ? 'hour-cell-now' : ''} ${isSelected ? 'hour-cell-selected' : ''}`}
-        style={{ ...(segments.length ? categoryPairStyle(segments.map((activity) => activity.category)) : {}), '--i': hour } as StyleVars}
+        style={{ ...(segments.length ? categoryPairStyle(meta, segments.map((activity) => activity.category)) : {}), '--i': hour } as StyleVars}
         aria-label={`${hourLabel(hour)}${currentHour === hour ? ' 지금' : ''} ${descriptor} ${selection ? (isSelected ? '선택됨' : '선택 안 됨') : segments.length ? '기록 수정' : '기록 추가'}`}
         aria-pressed={selection ? isSelected : undefined}
         aria-current={currentHour === hour ? 'time' : undefined}
@@ -655,8 +713,8 @@ function HourGrid({ date, day, selection, onSelectionChange, onOpenHours }: {
         {segments.length === 0 && <span className="hour-empty-mark" aria-hidden="true">+</span>}
         {segments.length === 1 && <CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" />}
         {segments.length === 2 && <>
-          <span className="hour-icon-slot hour-icon-a" style={categoryStyle(segments[0].category)}><CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" /></span>
-          <span className="hour-icon-slot hour-icon-b" style={categoryStyle(segments[1].category)}><CategoryIcon key={segments[1].category} category={segments[1].category} className="hour-icon" /></span>
+          <span className="hour-icon-slot hour-icon-a" style={categoryStyle(meta, segments[0].category)}><CategoryIcon key={segments[0].category} category={segments[0].category} className="hour-icon" /></span>
+          <span className="hour-icon-slot hour-icon-b" style={categoryStyle(meta, segments[1].category)}><CategoryIcon key={segments[1].category} category={segments[1].category} className="hour-icon" /></span>
         </>}
         {isSelected && <span className="hour-check" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m4 8.4 2.6 2.6L12 5.4" /></svg></span>}
       </button>
@@ -682,13 +740,15 @@ function arcPath(from: number, to: number, { center = 120, radius = RING_RADIUS,
 }
 
 function MiniRing({ day }: { day: DayRecord }) {
+  const { meta } = useCategories()
   return <svg className="mini-ring" viewBox="0 0 32 32" aria-hidden="true">
     <circle cx="16" cy="16" r="12" fill="none" stroke="var(--ring-track)" strokeWidth="5" />
-    {reviewHours(day).map(({ hour, activities }) => <path key={hour} d={arcPath(hour, hour + 1, { center: 16, radius: 12, startGap: 0, endGap: 0 })} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth="5" />)}
+    {reviewHours(day).map(({ hour, activities }) => <path key={hour} d={arcPath(hour, hour + 1, { center: 16, radius: 12, startGap: 0, endGap: 0 })} fill="none" stroke={meta(activities[0].category).color} strokeWidth="5" />)}
   </svg>
 }
 
 function DayRing({ date, day, compact = false }: { date: string; day: DayRecord; compact?: boolean }) {
+  const { meta } = useCategories()
   const entries = reviewHours(day)
   const count = entries.length
   const titleId = `ring-title-${date}-${compact ? 'compact' : 'full'}`
@@ -705,10 +765,10 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
     {hours().map((hour) => <path key={`track-${hour}`} d={arcPath(hour, hour + 1)} fill="none" stroke="var(--ring-track)" strokeWidth={RING_WIDTH} />)}
     {entries.map(({ hour, activities }) => activities.length === 2
       ? <g key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars}>
-          <path d={arcPath(hour, hour + 0.5, { endGap: SPLIT_GAP / 2 })} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />
-          <path d={arcPath(hour + 0.5, hour + 1, { startGap: SPLIT_GAP / 2 })} fill="none" stroke={CATEGORY_META[activities[1].category].color} strokeWidth={RING_WIDTH} />
+          <path d={arcPath(hour, hour + 0.5, { endGap: SPLIT_GAP / 2 })} fill="none" stroke={meta(activities[0].category).color} strokeWidth={RING_WIDTH} />
+          <path d={arcPath(hour + 0.5, hour + 1, { startGap: SPLIT_GAP / 2 })} fill="none" stroke={meta(activities[1].category).color} strokeWidth={RING_WIDTH} />
         </g>
-      : <path key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars} d={arcPath(hour, hour + 1)} fill="none" stroke={CATEGORY_META[activities[0].category].color} strokeWidth={RING_WIDTH} />)}
+      : <path key={`hour-${hour}`} className="ring-arc" style={{ '--i': hour } as StyleVars} d={arcPath(hour, hour + 1)} fill="none" stroke={meta(activities[0].category).color} strokeWidth={RING_WIDTH} />)}
     <circle cx="120" cy="120" r="53" fill="var(--surface-raised)" />
     <text x="120" y="122" textAnchor="middle" className="ring-center-date">{count}</text>
     <text x="120" y="142" textAnchor="middle" className="ring-center-count">시간 기록</text>
@@ -717,15 +777,16 @@ function DayRing({ date, day, compact = false }: { date: string; day: DayRecord;
 }
 
 function DayOverview({ date, day, records, onOpenReview }: { date: string; day: DayRecord; records: AppData['records']; onOpenReview: () => void }) {
+  const { meta, order } = useCategories()
   const presence = categoryPresence(records, [date])
-  const categories = presentCategories(presence)
+  const categories = presentCategories(presence, order)
   return <div className="day-overview">
     <h2 className="overview-heading">{reviewRangeLabel(date, 'day', [date])}</h2>
     <DayRing date={date} day={day} compact />
     {categories.length ? <ul className="overview-categories" aria-label="기록한 카테고리">
       {categories.map((category) => <li key={category}>
-        <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-        <span>{CATEGORY_META[category].label}</span><span className="presence-count">{presence[category]}시간</span>
+        <span className="legend-icon" style={categoryStyle(meta, category)}><CategoryIcon category={category} /></span>
+        <span>{meta(category).label}</span><span className="presence-count">{presence[category]}시간</span>
       </li>)}
     </ul> : <p className="overview-empty">기록을 남기면 이곳에 하루의 흐름이 보여요.</p>}
     <button className="overview-link" type="button" onClick={onOpenReview}>하루 돌아보기 <span aria-hidden="true">→</span></button>
@@ -733,12 +794,13 @@ function DayOverview({ date, day, records, onOpenReview }: { date: string; day: 
 }
 
 function CategoryLegend({ presence }: { presence: Record<CategoryId, number> }) {
-  const present = presentCategories(presence)
+  const { meta, order } = useCategories()
+  const present = presentCategories(presence, order)
   if (!present.length) return <p className="review-empty">아직 돌아볼 기록이 없어요.</p>
   return <ul className="category-legend" aria-label="기록한 카테고리">
     {present.map((category) => <li key={category}>
-      <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-      <span>{CATEGORY_META[category].label}</span><span>{presence[category]}시간</span>
+      <span className="legend-icon" style={categoryStyle(meta, category)}><CategoryIcon category={category} /></span>
+      <span>{meta(category).label}</span><span>{presence[category]}시간</span>
     </li>)}
   </ul>
 }
@@ -784,6 +846,7 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
 }
 
 function DayReview({ date, day, routineData }: { date: string; day: DayRecord; routineData: RoutineData }) {
+  const { meta } = useCategories()
   const routines = dayProgress(routineData, date)
   const blocks = timeBlocks(day)
   const count = Object.keys(day).length
@@ -806,12 +869,12 @@ function DayReview({ date, day, routineData }: { date: string; day: DayRecord; r
             <time className="timeline-time">{formatRangeTime(block.start * 60)}</time>
             <span className="timeline-gap-label">기록 없음 · {span}시간</span>
           </li>
-          const labels = block.categories.map((category) => CATEGORY_META[category].label).join(' · ')
-          return <li className="timeline-block" key={`block-${block.start}`} style={{ ...categoryPairStyle(block.categories), '--span': span, '--i': index } as StyleVars}>
+          const labels = block.categories.map((category) => meta(category).label).join(' · ')
+          return <li className="timeline-block" key={`block-${block.start}`} style={{ ...categoryPairStyle(meta, block.categories), '--span': span, '--i': index } as StyleVars}>
             <time className="timeline-time">{formatRangeTime(block.start * 60)}<span>{formatRangeTime(block.end * 60)}</span></time>
             <div className={`timeline-card ${block.categories.length === 2 ? 'timeline-card-dual' : ''}`}>
               <div className="timeline-title">
-                <span className="timeline-icons">{block.categories.map((category, iconIndex) => <span key={`${category}-${iconIndex}`} className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>)}</span>
+                <span className="timeline-icons">{block.categories.map((category, iconIndex) => <span key={`${category}-${iconIndex}`} className="legend-icon" style={categoryStyle(meta, category)}><CategoryIcon category={category} /></span>)}</span>
                 <strong>{labels}</strong>
                 <span className="timeline-duration">{span}시간</span>
               </div>
@@ -827,10 +890,11 @@ function DayReview({ date, day, routineData }: { date: string; day: DayRecord; r
 }
 
 function RangeReview({ records, routineData, dates, mode, onSelectDate }: { records: AppData['records']; routineData: RoutineData; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+  const { meta, order } = useCategories()
   const total = recordedHourCount(records, dates)
   const recordedDays = dates.filter((date) => Object.keys(records[date] ?? {}).length > 0).length
   const presence = categoryPresence(records, dates)
-  const present = presentCategories(presence)
+  const present = presentCategories(presence, order)
   const presenceTotal = present.reduce((sum, category) => sum + presence[category], 0)
   return <section className="range-review" aria-label={mode === 'week' ? '7일 돌아보기' : '월 돌아보기'}>
     <dl className="range-stats">
@@ -842,12 +906,12 @@ function RangeReview({ records, routineData, dates, mode, onSelectDate }: { reco
       <section className="range-card" aria-labelledby="share-title">
         <h2 id="share-title">무엇을 했나요</h2>
         <div className="share-bar" aria-hidden="true">
-          {present.map((category) => <span key={category} style={{ ...categoryStyle(category), flexGrow: presence[category] }} />)}
+          {present.map((category) => <span key={category} style={{ ...categoryStyle(meta, category), flexGrow: presence[category] }} />)}
         </div>
         <ul className="share-list">
-          {present.map((category) => <li key={category} style={categoryStyle(category)}>
+          {present.map((category) => <li key={category} style={categoryStyle(meta, category)}>
             <CategoryIcon category={category} />
-            <span className="share-label">{CATEGORY_META[category].label}</span>
+            <span className="share-label">{meta(category).label}</span>
             <strong>{presence[category]}시간</strong>
             <span className="share-percent">{Math.round(presence[category] / presenceTotal * 100)}%</span>
           </li>)}
@@ -883,6 +947,7 @@ function RoutineRates({ routineData, dates }: { routineData: RoutineData; dates:
 }
 
 function HourMatrix({ records, dates, mode, onSelectDate }: { records: AppData['records']; dates: string[]; mode: 'week' | 'month'; onSelectDate: (date: string) => void }) {
+  const { meta } = useCategories()
   return <div className={`hour-matrix hour-matrix-${mode}`}>
     <div className="matrix-axis" aria-hidden="true">
       {[0, 6, 12, 18].map((hour) => <span key={hour} style={{ gridColumn: hour + 2 }}>{pad(hour)}</span>)}
@@ -898,7 +963,7 @@ function HourMatrix({ records, dates, mode, onSelectDate }: { records: AppData['
         {hours().map((hour) => {
           const record = day[String(hour)]
           const categories = record?.segments.map((activity) => activity.category) ?? []
-          return <span key={hour} className={`matrix-cell ${categories.length === 2 ? 'matrix-cell-dual' : ''}`} style={categories.length ? categoryPairStyle(categories) : undefined} data-filled={categories.length ? '' : undefined} />
+          return <span key={hour} className={`matrix-cell ${categories.length === 2 ? 'matrix-cell-dual' : ''}`} style={categories.length ? categoryPairStyle(meta, categories) : undefined} data-filled={categories.length ? '' : undefined} />
         })}
       </button>
     })}
@@ -960,31 +1025,35 @@ function CalendarPage({ cursor, selectedDate, data, routineData, onPrevious, onN
 }
 
 function MonthSummary({ records, dates }: { records: AppData['records']; dates: string[] }) {
+  const { meta, order } = useCategories()
   const presence = categoryPresence(records, dates)
-  const present = presentCategories(presence)
+  const present = presentCategories(presence, order)
   if (!present.length) return null
   const total = recordedHourCount(records, dates)
   return <section className="range-card month-summary" aria-labelledby="month-summary-title">
     <div className="range-card-heading"><h2 id="month-summary-title">이번 달 한눈에</h2><span>{total}시간 기록</span></div>
     <div className="share-bar" aria-hidden="true">
-      {present.map((category) => <span key={category} style={{ ...categoryStyle(category), flexGrow: presence[category] }} />)}
+      {present.map((category) => <span key={category} style={{ ...categoryStyle(meta, category), flexGrow: presence[category] }} />)}
     </div>
     <ul className="month-summary-legend">
       {present.map((category) => <li key={category}>
-        <span className="legend-icon" style={categoryStyle(category)}><CategoryIcon category={category} /></span>
-        {CATEGORY_META[category].label} <strong>{presence[category]}</strong>
+        <span className="legend-icon" style={categoryStyle(meta, category)}><CategoryIcon category={category} /></span>
+        {meta(category).label} <strong>{presence[category]}</strong>
       </li>)}
     </ul>
   </section>
 }
 
-function SettingsPage({ data, routineData, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
+function SettingsPage({ data, routineData, categoryData, onAddCategory, onEditCategory, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
   data: AppData
   routineData: RoutineData
+  categoryData: CategoryData
+  onAddCategory: () => void
+  onEditCategory: (category: CustomCategory) => void
   theme: ThemeMode
   clearArmed: boolean
   onThemeChange: (theme: ThemeMode) => void
-  onImport: (data: AppData, routineData: RoutineData | null) => void
+  onImport: (data: AppData, routineData: RoutineData | null, categoryData: CategoryData | null) => void
   onNotice: (notice: NoticeContent) => void
   onArmClear: () => void
   onCancelClear: () => void
@@ -995,7 +1064,7 @@ function SettingsPage({ data, routineData, theme, clearArmed, onThemeChange, onI
   const hourCount = recordedHourCount(data.records, Object.keys(data.records))
   const exportData = async () => {
     const fileName = `girok-backup-${todayKey()}.json`
-    const json = JSON.stringify(backupFile(data, routineData), null, 2)
+    const json = JSON.stringify(backupFile(data, routineData, categoryData), null, 2)
     if (isNative) {
       try {
         const result = await shareBackup(fileName, json)
@@ -1023,7 +1092,7 @@ function SettingsPage({ data, routineData, theme, clearArmed, onThemeChange, onI
     if ('error' in result) { onNotice({ text: result.error, kind: 'error' }); return }
     const importedDays = Object.keys(result.data.records).length
     if (dateCount > 0 && !window.confirm(`현재 기록(${dateCount}일)을 백업 파일의 기록(${importedDays}일)으로 모두 바꿀까요? 이 작업은 되돌릴 수 없어요.`)) return
-    onImport(result.data, result.routineData)
+    onImport(result.data, result.routineData, result.categoryData)
   }
 
   return <section className="section-page settings-page" aria-labelledby="settings-title">
@@ -1039,6 +1108,7 @@ function SettingsPage({ data, routineData, theme, clearArmed, onThemeChange, onI
           </label>)}
         </div>
       </section>
+      <CategorySettings data={categoryData} records={data.records} onAdd={onAddCategory} onEdit={onEditCategory} />
       <section className="setting-section" aria-labelledby="backup-title">
         <div className="setting-heading">
           <div><h2 id="backup-title">데이터 백업</h2><p>기록은 {isNative ? '이 앱' : '이 기기의 브라우저'}에만 저장돼요. 중요한 기록은 가끔 백업해 두세요.</p></div>
@@ -1074,14 +1144,17 @@ function NoticeToast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: nu
   return <div className={`notice notice-${notice.kind}`} data-closing={closing || undefined} role="status" aria-live="polite">{notice.text}</div>
 }
 
-function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onDelete }: {
+function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onDelete, onAddCategory }: {
   date: string
   hours: number[]
   records: Array<HourRecord | undefined>
   onClose: (changed: boolean) => void
   onSave: (activities: Activity[]) => boolean
   onDelete: () => boolean
+  // Undefined once the custom category limit is reached.
+  onAddCategory?: (onCreated: (id: string) => void) => void
 }) {
+  const { meta, order } = useCategories()
   // Prefill only when every selected hour holds the same record; otherwise start blank.
   const record = records.every((item) => JSON.stringify(item) === JSON.stringify(records[0])) ? records[0] : undefined
   const hasRecord = records.some(Boolean)
@@ -1169,10 +1242,13 @@ function EntryDialog({ date, hours: selectedHours, records, onClose, onSave, onD
     }
   }
   const categoryOptions = (slot: 1 | 2, selected: CategoryId | null) => <div className="category-options">
-    {CATEGORY_IDS.map((category) => <label key={category} className={`category-option ${selected === category ? 'category-option-selected' : ''}`} style={categoryStyle(category)}>
+    {order.map((category) => <label key={category} className={`category-option ${selected === category ? 'category-option-selected' : ''}`} style={categoryStyle(meta, category)}>
       <input className="visually-hidden" type="radio" name={`entry-category-${date}-${hourKey}-${slot}`} value={category} checked={selected === category} onChange={() => chooseCategory(slot, category)} />
-      <CategoryIcon category={category} /><span>{CATEGORY_META[category].label}</span>
+      <CategoryIcon category={category} /><span>{meta(category).label}</span>
     </label>)}
+    {onAddCategory && <button type="button" className="category-option category-option-add" onClick={() => onAddCategory((id) => chooseCategory(slot, id))}>
+      <span aria-hidden="true">+</span>추가
+    </button>}
   </div>
 
   const titleId = `entry-dialog-title-${date}-${hourKey}`

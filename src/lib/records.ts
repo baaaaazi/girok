@@ -22,19 +22,23 @@ export function recordedHourCount(records: AppData['records'], dates: string[]):
   return dates.reduce((total, date) => total + Object.keys(records[date] ?? {}).length, 0)
 }
 
+// Hours per category; only categories that appear get a key.
 export function categoryPresence(records: AppData['records'], dates: string[]): Record<CategoryId, number> {
-  const presence = Object.fromEntries(CATEGORY_IDS.map((category) => [category, 0])) as Record<CategoryId, number>
+  const presence: Record<CategoryId, number> = {}
   for (const date of dates) {
     for (const hour of Object.values(records[date] ?? {})) {
-      for (const category of new Set(hour.segments.map((activity) => activity.category))) presence[category] += 1
+      for (const category of new Set(hour.segments.map((activity) => activity.category))) presence[category] = (presence[category] ?? 0) + 1
     }
   }
   return presence
 }
 
-export function presentCategories(presence: Record<CategoryId, number>): CategoryId[] {
-  // Most-recorded first; ties keep the CATEGORY_IDS order (sort is stable).
-  return CATEGORY_IDS.filter((category) => presence[category] > 0).sort((a, b) => presence[b] - presence[a])
+// Most-recorded first; ties follow `order` (built-ins, then custom categories), and unknown ids go last.
+export function presentCategories(presence: Record<CategoryId, number>, order: readonly CategoryId[] = CATEGORY_IDS): CategoryId[] {
+  const rank = (category: CategoryId) => { const index = order.indexOf(category); return index < 0 ? order.length : index }
+  return Object.keys(presence)
+    .filter((category) => presence[category] > 0)
+    .sort((a, b) => presence[b] - presence[a] || rank(a) - rank(b) || (a < b ? -1 : 1))
 }
 
 export type TimeBlock =

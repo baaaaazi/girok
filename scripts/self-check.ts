@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { assertMonthLayout, dateKey, monthGrid, monthLeadingDays, shiftDate, shiftMonth, swipeDateAmount } from '../src/lib/date.ts'
-import { categoryPresence, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
+import { categoryPresence, presentCategories, recordedHourCount, replaceHour, replaceHours, reviewHours, timeBlocks } from '../src/lib/records.ts'
 import { CORRUPT_BACKUP_KEY, EMPTY_DATA, LEGACY_STORAGE_KEY, STORAGE_KEY, clearData, parseImportedData, readData, replaceData, validateDataV1, validateDataV2 } from '../src/lib/storage.ts'
 import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete, dayProgress, ddayLabel, isDue, nearestGoal, readRoutineData, removeRoutine, routineRates, repeatLabel, sortedGoals, streak, toggleCheck, upsertRoutine, validateRoutineData, weekCount, weekStart, writeRoutineData } from '../src/lib/routines.ts'
 import { backupFile } from '../src/lib/storage.ts'
+import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
+import type { CategoryData } from '../src/types/category.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
 
@@ -238,7 +240,7 @@ assert.equal(clearRoutineData(), true)
 assert.deepEqual(readRoutineData(), EMPTY_ROUTINE_DATA)
 
 // Backups carry routines without touching the v2 record format.
-const withRoutines = parseImportedData(JSON.stringify(backupFile(canonical, routineData)))
+const withRoutines = parseImportedData(JSON.stringify(backupFile(canonical, routineData, EMPTY_CATEGORY_DATA)))
 assert.ok('data' in withRoutines)
 assert.deepEqual(withRoutines.data, canonical)
 assert.equal('routineData' in withRoutines.data, false)
@@ -247,6 +249,60 @@ const oldBackup = parseImportedData(JSON.stringify(canonical))
 assert.ok('data' in oldBackup)
 assert.equal(oldBackup.routineData, null)
 assert.equal('error' in parseImportedData(JSON.stringify({ ...canonical, routineData: badRoutines[2] })), true)
+bytes.clear()
+
+// Custom categories live under their own key; records only need a well-formed id.
+const reading: CategoryData = upsertCategory(EMPTY_CATEGORY_DATA, { id: 'c-read1', name: '독서', icon: 'book', color: 'red' })
+assert.equal(validateCategoryData(reading), true)
+assert.equal(isCategoryId('c-read1'), true)
+assert.equal(isCategoryId('c-gone'), true) // a missing definition never makes records unreadable
+assert.equal(isCategoryId('reading'), false)
+assert.equal(isCategoryId('c-'), false)
+assert.equal(validateCategoryData({ version: 1, categories: [{ id: 'study', name: 'x', icon: 'book', color: 'red' }] }), false) // built-in id
+assert.equal(validateCategoryData({ version: 1, categories: [{ id: 'c-a', name: '아주아주긴이름입니다', icon: 'book', color: 'red' }] }), false)
+assert.equal(validateCategoryData({ version: 1, categories: [{ id: 'c-a', name: '독서', icon: 'nope', color: 'red' }] }), false)
+assert.equal(validateCategoryData({ version: 1, categories: [reading.categories[0], reading.categories[0]] }), false)
+assert.deepEqual(categoryMeta('c-read1', reading), { id: 'c-read1', label: '독서', color: '#D65745', icon: 'book', custom: true })
+assert.equal(categoryMeta('study', reading).label, '공부')
+assert.equal(categoryMeta('c-gone', reading).label, '지운 카테고리')
+assert.deepEqual(categoryOrder(reading).slice(-2), ['other', 'c-read1'])
+assert.equal(nameTaken(reading, ' 공부 '), true)
+assert.equal(nameTaken(reading, '독서'), true)
+assert.equal(nameTaken(reading, '독서', 'c-read1'), false) // renaming to itself is fine
+assert.equal(upsertCategory(reading, { id: 'c-read1', name: '책', icon: 'book', color: 'sky' }).categories.length, 1)
+
+const customDay: AppData = { version: 2, records: {
+  '2026-10-01': { '8': { segments: [{ category: 'c-read1', text: '소설' }] }, '9': { segments: [study, { category: 'c-read1', text: '' }] }, '10': { segments: [study] } },
+} }
+assert.equal(validateDataV2(customDay), true)
+assert.equal('error' in parseImportedData(JSON.stringify(customDay)), false)
+const customPresence = categoryPresence(customDay.records, ['2026-10-01'])
+assert.deepEqual(customPresence, { 'c-read1': 2, study: 2 })
+assert.deepEqual(presentCategories(customPresence, categoryOrder(reading)), ['study', 'c-read1']) // tie keeps built-ins first
+assert.equal(categoryHours(customDay.records, 'c-read1'), 2)
+const reassigned = reassignCategory(customDay, 'c-read1', 'other')
+assert.equal(validateDataV2(reassigned), true)
+assert.deepEqual(reassigned.records['2026-10-01']['8'].segments, [{ category: 'other', text: '소설' }])
+assert.deepEqual(reassigned.records['2026-10-01']['9'].segments, [study, { category: 'other', text: '' }])
+assert.equal(categoryHours(reassigned.records, 'c-read1'), 0)
+assert.equal(customDay.records['2026-10-01']['8'].segments[0].category, 'c-read1') // input left untouched
+
+assert.equal(writeCategoryData(reading), true)
+assert.deepEqual(readCategoryData(), reading)
+assert.equal(writeCategoryData({ version: 1, categories: [{ id: 'bad', name: '', icon: 'book', color: 'red' }] } as CategoryData), false)
+bytes.set(CATEGORY_STORAGE_KEY, '{oops')
+assert.deepEqual(readCategoryData(), EMPTY_CATEGORY_DATA)
+assert.deepEqual(removeCategory(reading, 'c-read1'), EMPTY_CATEGORY_DATA)
+
+// Backups carry the custom categories; files without them keep the current ones.
+const categoryBackup = parseImportedData(JSON.stringify(backupFile(customDay, EMPTY_ROUTINE_DATA, reading)))
+assert.ok(!('error' in categoryBackup))
+assert.deepEqual(categoryBackup.categoryData, reading)
+assert.deepEqual(categoryBackup.routineData, EMPTY_ROUTINE_DATA)
+const noCategories = parseImportedData(JSON.stringify(customDay))
+assert.ok(!('error' in noCategories))
+assert.equal(noCategories.categoryData, null)
+assert.equal('error' in parseImportedData(JSON.stringify({ ...customDay, categoryData: { version: 1, categories: 'x' } })), true)
 bytes.clear()
 
 console.log('self-check passed')

@@ -11,8 +11,8 @@
 ## 진행 순서
 1. ~~**루틴 탭**: 루틴 만들기·수정·삭제, 오늘 체크, 연속 달성(streak), 목표/디데이~~ (완료: `src/RoutinePage.tsx`, `src/lib/routines.ts`, `src/sheet.ts`)
 2. ~~달력(날짜별 루틴 달성 표시), 돌아보기(달성률), 기록 화면 위쪽에 가장 가까운 디데이~~ (완료: `nearestGoal`, `dayComplete`, `routineRates`)
-3. 알림: 사용자 지정 시간 (Capacitor Local Notifications, APK 우선)
-4. 나만의 기록 카테고리 (기록 칸용, 루틴과는 별개)
+3. 알림: 사용자 지정 시간 (Capacitor Local Notifications, APK 우선) — **보류**: 웹에서는 동작하지 않으므로 APK로 옮길 때 한다.
+4. ~~나만의 기록 카테고리 (기록 칸용, 루틴과는 별개)~~ (완료: `src/lib/categories.ts`, `src/CategorySheet.tsx`, 설정의 "기록 카테고리"와 기록 시트의 "+ 추가")
 5. 인사이트 문장("지난주보다 수면 40분 줄었어요")과 연속 기록
 
 ## 2단계 설계 (확정, 다음 세션에서 구현)
