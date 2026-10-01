@@ -16,6 +16,7 @@ import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -40,7 +41,8 @@ public class GirokWidgetProvider extends AppWidgetProvider {
     private static final int HEADER = 44;
     private static final int BAR = 12 + 10;
     private static final int LIST_TOP = 8;
-    private static final int ROW = 34;
+    private static final int ROW = 44;
+    private static final int ROW_MAX = 60; // rows grow toward this to fill a roomy widget (Android 12+)
     private static final int MORE = 20;
 
     // The app's light and dark tokens (src/styles.css) for when the user picked a theme in the app;
@@ -135,7 +137,12 @@ public class GirokWidgetProvider extends AppWidgetProvider {
         views.removeAllViews(R.id.widget_routines);
         int available = heightDp - PADDING * 2 - HEADER - BAR - LIST_TOP;
         int shown = due.size() * ROW <= available ? due.size() : Math.max(0, (available - MORE) / ROW);
-        for (int i = 0; i < shown; i++) views.addView(R.id.widget_routines, routineRow(context, snapshot, due.get(i), today, palette));
+        int rowHeight = shown == due.size() && shown > 0 ? Math.min(ROW_MAX, available / shown) : ROW;
+        for (int i = 0; i < shown; i++) {
+            RemoteViews row = routineRow(context, snapshot, due.get(i), today, palette);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) row.setViewLayoutHeight(R.id.row_root, rowHeight, TypedValue.COMPLEX_UNIT_DIP);
+            views.addView(R.id.widget_routines, row);
+        }
 
         String note = null;
         if (snapshot == null) note = "앱을 열면 오늘 기록이 여기에 보여요";
@@ -218,8 +225,8 @@ public class GirokWidgetProvider extends AppWidgetProvider {
 
     private static Bitmap checkIcon(Context context, int color, boolean checked) {
         float density = context.getResources().getDisplayMetrics().density;
-        int size = Math.round(22 * density);
-        float stroke = 2 * density;
+        int size = Math.round(28 * density);
+        float stroke = 2.4f * density;
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
