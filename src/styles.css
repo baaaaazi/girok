@@ -291,10 +291,11 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .mini-ring-empty { display: block; width: 28px; height: 28px; border: 1px dashed var(--line-strong); border-radius: 50%; transform: scale(0.72); }
 
 /* Review header */
-.review-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 12px; background: var(--wash); }
+.review-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 12px; background: var(--wash); }
 .review-tab { min-height: 38px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease; }
 .review-tab-active { background: var(--surface-raised); color: var(--ink); font-weight: 700; box-shadow: 0 1px 3px rgb(0 0 0 / 8%), 0 0 0 1px var(--line); }
 .range-controls { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; margin-top: 12px; }
+.range-controls p { grid-column: 2; }
 .range-controls p { overflow: hidden; font-size: 17px; font-weight: 700; letter-spacing: -0.03em; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .review-panel { margin-top: 12px; }
 
@@ -372,6 +373,35 @@ h2 { letter-spacing: -0.03em; font-size: 16px; font-weight: 700; line-height: 1.
 .matrix-cell[data-filled] { background: var(--category); }
 .matrix-cell-dual[data-filled] { background: linear-gradient(to bottom right, var(--category-a) 50%, var(--category-b) 50%); }
 @keyframes bar-in { from { transform: scaleX(0); } }
+
+/* Year heatmap: week columns, Sunday on top. Each 16px button holds a 12px swatch so taps have some slack. */
+.heatmap-card { --heat-pitch: 16px; --heat-empty: var(--ring-track); }
+.heatmap { display: flex; margin-top: 12px; }
+.heatmap-weekdays { display: grid; flex: none; grid-template-rows: repeat(7, var(--heat-pitch)); padding-top: 16px; width: 18px; color: var(--faint); font-size: 9px; line-height: var(--heat-pitch); }
+.heatmap-scroll { min-width: 0; flex: 1; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+.heatmap-scroll::-webkit-scrollbar { display: none; }
+.heatmap-months, .heatmap-grid { display: grid; grid-auto-columns: var(--heat-pitch); grid-auto-flow: column; width: max-content; }
+.heatmap-months { height: 16px; color: var(--faint); font-size: 10px; line-height: 12px; }
+.heatmap-months span { white-space: nowrap; }
+.heatmap-week { display: grid; grid-template-rows: repeat(7, var(--heat-pitch)); animation: heat-in 360ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 8ms); }
+.heatmap-day { display: grid; width: var(--heat-pitch); height: var(--heat-pitch); place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.heatmap-day > span { position: relative; display: block; width: 12px; height: 12px; border-radius: 3px; background: var(--heat-empty); transition: transform 120ms var(--ease-out); }
+.heatmap-day-blank > span, .heatmap-day-blank { visibility: hidden; }
+.heatmap-day[data-level='1'] > span { background: color-mix(in srgb, var(--ink) 20%, var(--heat-empty)); }
+.heatmap-day[data-level='2'] > span { background: color-mix(in srgb, var(--ink) 40%, var(--heat-empty)); }
+.heatmap-day[data-level='3'] > span { background: color-mix(in srgb, var(--ink) 64%, var(--heat-empty)); }
+.heatmap-day[data-level='4'] > span { background: color-mix(in srgb, var(--ink) 88%, var(--heat-empty)); }
+.heatmap-day[data-complete] > span::after { position: absolute; inset: 0; width: 4px; height: 4px; margin: auto; border-radius: 50%; background: var(--ink); content: ''; }
+.heatmap-day[data-level='3'][data-complete] > span::after, .heatmap-day[data-level='4'][data-complete] > span::after { background: var(--bg); }
+.heatmap-day[aria-current='date'] > span { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+button.heatmap-day:active { transform: none; }
+button.heatmap-day:active > span { transform: scale(0.8); }
+button.heatmap-day:focus-visible { outline-offset: 0; }
+.heatmap-legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0; margin-top: 10px; color: var(--faint); font-size: 11px; }
+.heatmap-legend > span:not(.heatmap-day) { padding: 0 4px; }
+.heatmap-legend .heatmap-day { cursor: default; }
+.heatmap-legend-dot { display: inline-flex; align-items: center; margin-left: 8px; }
+@keyframes heat-in { from { opacity: 0; transform: scale(0.7); } }
 .month-summary { margin-top: 16px; }
 .review-routine-line { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; text-align: center; }
 .review-routine-line strong { color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -726,6 +756,8 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
+  .heatmap-week { animation: none; }
+  button.heatmap-day:active > span { transform: none; }
   .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak, .reminder-row, .routine-count-bump, .routine-progress-note-earned { animation: none; }
   .confetti, .routine-burst, .routine-row-pop::after, .routine-progress-shine { display: none; }
   .switch span { transition-duration: 0ms; }

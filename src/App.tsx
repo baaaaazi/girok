@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ChangeEvent, type Dispatch, type SetStateAction, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   dateKey,
   displayDate,
@@ -20,6 +20,7 @@ import {
 import { categoryPresence, presentCategories, recordedHourCount, replaceHours, reviewHours, timeBlocks } from './lib/records'
 import { EMPTY_DATA, THEME_KEY, backupFile, clearData, parseImportedData, readData, replaceData, writeData } from './lib/storage'
 import { CUSTOM_CATEGORY_MAX, newCategoryId, readCategoryData, reassignCategory, removeCategory, categoryHours, upsertCategory, writeCategoryData } from './lib/categories'
+import { heatDays, heatMonthLabels, heatWeeks } from './lib/heatmap'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from './lib/insights'
 import { EMPTY_ROUTINE_DATA, clearRoutineData, dayComplete, dayProgress, ddayLabel, nearestGoal, readRoutineData, routineRates, writeRoutineData } from './lib/routines'
 import type { CategoryData, CustomCategory } from './types/category'
@@ -36,7 +37,8 @@ type StyleVars = CSSProperties & Record<`--${string}`, string | number>
 type Notice = { id: number; text: string; kind: 'success' | 'error' | 'info' }
 type NoticeContent = Omit<Notice, 'id'>
 type DraftActivity = { category: CategoryId | null; text: string }
-type ReviewMode = 'day' | 'week' | 'month'
+type ReviewMode = 'day' | 'week' | 'month' | 'year'
+type RangeMode = 'day' | 'week' | 'month'
 
 const LIGHT_COLOR = '#FFFFFF'
 const DARK_COLOR = '#111113'
@@ -83,7 +85,7 @@ function makeHourRecord(activities: Activity[]): HourRecord | null {
     : { segments: [activities[0], activities[1]] }
 }
 
-function reviewDates(date: string, mode: ReviewMode): string[] {
+function reviewDates(date: string, mode: RangeMode): string[] {
   if (mode === 'day') return [date]
   if (mode === 'week') return Array.from({ length: 7 }, (_, index) => shiftDate(date, index - 6))
   return monthDays(parseDateKey(date) ?? new Date()).map(dateKey)
@@ -94,7 +96,7 @@ function monthDayLabel(key: string, withMonth = true): string {
   return withMonth ? `${date.getMonth() + 1}월 ${date.getDate()}일` : `${date.getDate()}일`
 }
 
-function reviewRangeLabel(date: string, mode: ReviewMode, dates: string[]): string {
+function reviewRangeLabel(date: string, mode: RangeMode, dates: string[]): string {
   if (mode === 'day') return `${monthDayLabel(date)} ${displayDate(date).weekday}`
   if (mode === 'week') {
     const first = dates[0]
@@ -224,7 +226,7 @@ export default function App() {
   const saveHours = (hours: number[], activities: Activity[]) => commitData(replaceHours(data, selectedDate, hours, makeHourRecord(activities)))
   const deleteHours = (hours: number[]) => commitData(replaceHours(data, selectedDate, hours, null))
   const navigateDate = (amount: number) => setSelectedDate((current) => shiftDate(current, amount))
-  const navigateReview = (amount: number) => setSelectedDate((current) => reviewMode === 'month'
+  const navigateReview = (amount: number) => reviewMode !== 'year' && setSelectedDate((current) => reviewMode === 'month'
     ? shiftMonth(current, amount)
     : shiftDate(current, amount * (reviewMode === 'week' ? 7 : 1)))
   const navigate = (next: Page) => {
@@ -847,10 +849,10 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
   onNext: () => void
   onSelectDate: (date: string) => void
 }) {
-  const dates = reviewDates(date, mode)
-  const rangeLabel = reviewRangeLabel(date, mode, dates)
-  const modes: ReviewMode[] = ['day', 'week', 'month']
-  const tabLabels: Record<ReviewMode, string> = { day: '하루', week: '7일', month: '월' }
+  const dates = mode === 'year' ? [] : reviewDates(date, mode)
+  const rangeLabel = mode === 'year' ? '최근 1년' : reviewRangeLabel(date, mode, dates)
+  const modes: ReviewMode[] = ['day', 'week', 'month', 'year']
+  const tabLabels: Record<ReviewMode, string> = { day: '하루', week: '7일', month: '월', year: '1년' }
 
   return <section className="section-page review-page" aria-labelledby="review-title">
     <h1 id="review-title" className="visually-hidden">돌아보기</h1>
@@ -865,14 +867,71 @@ function ReviewPage({ date, data, routineData, mode, onModeChange, onPrevious, o
       {modes.map((item) => <button key={item} id={`review-tab-${item}`} type="button" role="tab" aria-selected={mode === item} aria-controls="review-panel" tabIndex={mode === item ? 0 : -1} className={mode === item ? 'review-tab review-tab-active' : 'review-tab'} onClick={() => onModeChange(item)}>{tabLabels[item]}</button>)}
     </div>
     <div className="range-controls" aria-label={`${tabLabels[mode]} 범위 이동`}>
-      <button className="step-control" type="button" onClick={onPrevious} aria-label={`이전 ${tabLabels[mode]}`}><span aria-hidden="true">‹</span></button>
+      {mode !== 'year' && <button className="step-control" type="button" onClick={onPrevious} aria-label={`이전 ${tabLabels[mode]}`}><span aria-hidden="true">‹</span></button>}
       <p aria-live="polite">{rangeLabel}</p>
-      <button className="step-control" type="button" onClick={onNext} aria-label={`다음 ${tabLabels[mode]}`}><span aria-hidden="true">›</span></button>
+      {mode !== 'year' && <button className="step-control" type="button" onClick={onNext} aria-label={`다음 ${tabLabels[mode]}`}><span aria-hidden="true">›</span></button>}
     </div>
-    <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0]}`}>
-      {mode === 'day'
+    <div id="review-panel" className="review-panel" role="tabpanel" aria-labelledby={`review-tab-${mode}`} key={`${mode}-${dates[0] ?? ''}`}>
+      {mode === 'year'
+        ? <YearHeatmap records={data.records} routineData={routineData} onSelectDate={onSelectDate} />
+        : mode === 'day'
         ? <DayReview date={date} day={data.records[date] ?? {}} routineData={routineData} />
         : <RangeReview records={data.records} routineData={routineData} dates={dates} previousDates={reviewDates(mode === 'week' ? shiftDate(date, -7) : shiftMonth(date, -1), mode)} mode={mode} onSelectDate={onSelectDate} />}
+    </div>
+  </section>
+}
+
+function YearHeatmap({ records, routineData, onSelectDate }: { records: AppData['records']; routineData: RoutineData; onSelectDate: (date: string) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const today = todayKey()
+  const days = heatDays(records, routineData, today)
+  const weeks = heatWeeks(days)
+  const months = heatMonthLabels(weeks)
+  const recordedDays = days.filter((day) => day.hours > 0).length
+  const completeDays = days.filter((day) => day.complete).length
+  // Open on the latest weeks; older ones are a swipe to the left.
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth
+  }, [])
+  return <section className="range-card heatmap-card" aria-labelledby="heatmap-title">
+    <div className="range-card-heading">
+      <h2 id="heatmap-title">1년 잔디</h2>
+      <span>{recordedDays}일 기록{completeDays > 0 && ` · 루틴 완료 ${completeDays}일`}</span>
+    </div>
+    <div className="heatmap">
+      <div className="heatmap-weekdays" aria-hidden="true">
+        {WEEKDAYS_SHORT.map((weekday, index) => <span key={weekday}>{index % 2 ? weekday : ''}</span>)}
+      </div>
+      <div className="heatmap-scroll" ref={scrollRef}>
+        <div className="heatmap-months" aria-hidden="true">
+          {months.map(({ week, month }) => <span key={`${week}-${month}`} style={{ gridColumn: week + 1 }}>{month}월</span>)}
+        </div>
+        <div className="heatmap-grid">
+          {weeks.map((week, column) => <div key={column} className="heatmap-week" style={{ '--i': weeks.length - 1 - column } as StyleVars}>
+            {week.map((day, row) => {
+              if (!day) return <span key={row} className="heatmap-day heatmap-day-blank" aria-hidden="true" />
+              const date = parseDateKey(day.date) ?? new Date()
+              return <button
+                key={day.date}
+                type="button"
+                className="heatmap-day"
+                data-level={day.level}
+                data-complete={day.complete ? '' : undefined}
+                aria-current={day.date === today ? 'date' : undefined}
+                aria-label={`${monthDayLabel(day.date)} ${WEEKDAYS_SHORT[date.getDay()]}요일, ${day.hours ? `${day.hours}시간 기록` : '기록 없음'}${day.complete ? ', 루틴 모두 완료' : ''}. 기록 열기`}
+                onClick={() => onSelectDate(day.date)}
+              ><span /></button>
+            })}
+          </div>)}
+        </div>
+      </div>
+    </div>
+    <div className="heatmap-legend" aria-hidden="true">
+      <span>적게</span>
+      {([0, 1, 2, 3, 4] as const).map((level) => <span key={level} className="heatmap-day" data-level={level}><span /></span>)}
+      <span>많이</span>
+      <span className="heatmap-legend-dot"><span className="heatmap-day" data-level={0} data-complete=""><span /></span>루틴 완료</span>
     </div>
   </section>
 }

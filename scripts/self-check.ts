@@ -7,6 +7,7 @@ import { backupFile } from '../src/lib/storage.ts'
 import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
 import type { CategoryData } from '../src/types/category.ts'
 import { EMPTY_REMINDER_DATA, REMINDER_STORAGE_KEY, newReminderId, readReminderData, reminderNotificationIds, reminderOccurrences, removeReminder, timeLabel, upsertReminder, validateReminderData, writeReminderData } from '../src/lib/reminders.ts'
+import { heatDays, heatLevel, heatMonthLabels, heatWeeks } from '../src/lib/heatmap.ts'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
@@ -198,6 +199,37 @@ assert.equal(perfectStreak(EMPTY_ROUTINE_DATA, '2026-10-01'), 0)
 const weeklyOnly: RoutineData = { ...routineData, routines: [read] }
 assert.equal(dayComplete(weeklyOnly, '2026-09-28'), true)
 assert.equal(dayComplete(weeklyOnly, '2026-09-29'), false)
+
+// Year heatmap: per-day hours and level, the calendar's routine dot, Sunday-first week columns.
+assert.deepEqual([0, 1, 5, 6, 11, 12, 17, 18, 24].map(heatLevel), [0, 1, 1, 2, 2, 3, 3, 4, 4])
+const heatRecords: AppData['records'] = {
+  '2026-09-30': Object.fromEntries(Array.from({ length: 12 }, (_, hour) => [String(hour), { segments: [study] }])),
+  '2026-10-01': { '9': { segments: [study, meal] } },
+  '2025-10-01': { '9': { segments: [study] } }, // 366 days back: outside the year
+}
+const year = heatDays(heatRecords, routineData, '2026-10-01')
+assert.equal(year.length, 365)
+assert.equal(year[0].date, '2025-10-02')
+assert.equal(year[364].date, '2026-10-01')
+assert.equal(year.filter((day) => day.hours).length, 2)
+assert.deepEqual(year[363], { date: '2026-09-30', hours: 12, level: 3, complete: true })
+assert.deepEqual(year[364], { date: '2026-10-01', hours: 1, level: 1, complete: dayComplete(routineData, '2026-10-01') })
+assert.equal(year.filter((day) => day.complete).length, year.filter((day) => dayComplete(routineData, day.date)).length)
+assert.equal(heatDays({}, EMPTY_ROUTINE_DATA, '2028-12-31').length, 365) // leap year still covers 365 days
+const weeks = heatWeeks(year)
+assert.equal(weeks.length, 53)
+assert.ok(weeks.every((week) => week.length === 7))
+assert.deepEqual(weeks[0].slice(0, 5), [null, null, null, null, year[0]]) // 2025-10-02 is a Thursday
+assert.equal(weeks[52][4], year[364]) // 2026-10-01 is a Thursday
+assert.deepEqual(weeks[52].slice(5), [null, null])
+assert.deepEqual(weeks.flat().filter(Boolean), year)
+assert.deepEqual(heatWeeks([]), [])
+const monthLabels = heatMonthLabels(weeks)
+assert.deepEqual(monthLabels.map((label) => label.month), [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+assert.equal(monthLabels[0].week, 0) // partial October gets a label: November starts in week 4
+assert.equal(monthLabels[1].week, 4) // 2025-11-01 is a Saturday in the fifth column
+assert.equal(monthLabels[12].week, 52)
+assert.deepEqual(heatMonthLabels(heatWeeks(heatDays({}, EMPTY_ROUTINE_DATA, '2026-10-10', 20))).map((label) => label.month), [10]) // partial September (one column) too narrow to label
 
 // Review rates: due days up to today; weekly routines use the weekly target scaled to the days counted.
 const lastWeek = Array.from({ length: 7 }, (_, index) => shiftDate('2026-10-01', index - 6))
