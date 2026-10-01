@@ -489,6 +489,22 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
 .category-manage-name { flex: 1; min-width: 0; overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .category-manage-count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .category-manage-chevron { color: var(--faint); font-size: 18px; line-height: 1; }
+.reminder-list { display: grid; gap: 6px; margin: 16px 0 0; padding: 0; list-style: none; }
+.reminder-row { display: flex; align-items: center; gap: 8px; padding-right: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-raised); animation: cell-in 300ms var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 30ms); transition: opacity 200ms ease; }
+.reminder-main { display: flex; flex: 1; min-width: 0; min-height: 56px; align-items: center; gap: 12px; padding: 0 0 0 14px; border: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.reminder-time { flex: none; font-size: 20px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.reminder-time span { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0; }
+.reminder-text { min-width: 0; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.reminder-row-off .reminder-time, .reminder-row-off .reminder-text { opacity: 0.45; }
+.reminder-presets { margin-top: 14px; justify-content: flex-start; }
+.reminder-warning { color: var(--danger); }
+.reminder-sheet-hint { margin-top: 0; }
+.reminder-time-input { font-size: 18px; font-variant-numeric: tabular-nums; }
+.switch { position: relative; flex: none; width: 44px; height: 26px; padding: 0; border: 0; border-radius: 99px; background: var(--line-strong); cursor: pointer; transition: background-color 200ms ease; }
+.switch span { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); transition: transform 220ms var(--ease-out); }
+.switch[aria-checked='true'] { background: #4A7FCC; }
+.switch[aria-checked='true'] span { transform: translateX(18px); }
+.switch:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .segmented { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 3px; border-radius: 12px; background: var(--wash); }
 .segmented-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .segment { display: grid; min-height: 38px; place-items: center; border-radius: 9px; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 600; transition: background-color 200ms ease, color 200ms ease, box-shadow 200ms ease; }
@@ -688,7 +704,8 @@ button.routine-toggle:not(:disabled):active .routine-check { transform: scale(0.
   .mobile-navigation .nav-item-active .nav-icon { transform: none; }
   .hour-cell:hover, .hour-cell-selected, .category-option-selected .category-icon { transform: none; }
   .hour-check, .selection-bar { animation: none; }
-  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak { animation: none; }
+  .goal-card, .routine-row, .routine-check-pop, .routine-progress-note, .routine-dot, .rate-list li, .rate-track span, .category-manage-list li, .category-preview .category-icon, .insight-list li, .record-streak, .reminder-row { animation: none; }
+  .switch span { transition-duration: 0ms; }
   .routine-progress-track span, .routine-check svg { transition: none; }
   button.routine-toggle:not(:disabled):active .routine-check, .icon-option:active, .color-option-selected, .icon-option-selected .category-icon { transform: none; }
   .entry-dialog, .entry-dialog[data-closing] { transform: none; transition-duration: 140ms; }

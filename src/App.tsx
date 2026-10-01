@@ -27,7 +27,9 @@ import { ROUTINE_COLORS, type Goal, type RoutineData } from './types/routine'
 import { type Activity, type AppData, type CategoryId, type DayRecord, type HourRecord, type Page, type ThemeMode } from './types/record'
 import { RoutineIcon } from './icons'
 import { CategoryContext, CategoryDialog, CategoryIcon, CategorySettings, blankCategory, useCategories, type CategoryDraft } from './CategorySheet'
-import { exitApp, isNative, listenBackButton, shareBackup } from './native'
+import { exitApp, isNative, listenBackButton, shareBackup, syncReminders } from './native'
+import { readReminderData, writeReminderData, type ReminderData } from './lib/reminders'
+import { ReminderSettings } from './ReminderSettings'
 import { RoutinePage } from './RoutinePage'
 
 type StyleVars = CSSProperties & Record<`--${string}`, string | number>
@@ -127,6 +129,7 @@ export default function App() {
   const [data, setData] = useState<AppData>(() => readData())
   const [routineData, setRoutineData] = useState<RoutineData>(() => readRoutineData())
   const [categoryData, setCategoryData] = useState<CategoryData>(() => readCategoryData())
+  const [reminderData, setReminderData] = useState<ReminderData>(() => readReminderData())
   // `onCreated` lets the entry sheet pick a category the moment it is added from there.
   const [editingCategory, setEditingCategory] = useState<{ draft: CategoryDraft; onCreated?: (id: string) => void } | null>(null)
   const [page, setPage] = useState<Page>('record')
@@ -173,6 +176,31 @@ export default function App() {
     setCategoryData(next)
     return true
   }
+
+  const commitReminders = (next: ReminderData): boolean => {
+    if (!writeReminderData(next)) {
+      showNotice({ text: '알림을 저장하지 못했어요.', kind: 'error' })
+      return false
+    }
+    const previous = reminderData.reminders
+    setReminderData(next)
+    if (isNative) {
+      void syncReminders(next.reminders, true, previous).then((result) => {
+        if (result === 'denied') showNotice({ text: '알림 권한이 없어 알림을 보낼 수 없어요.', kind: 'error' })
+        else if (result === 'failed') showNotice({ text: '알림을 예약하지 못했어요.', kind: 'error' })
+      })
+    }
+    return true
+  }
+
+  // Reminders are booked REMINDER_DAYS ahead, so top them up whenever the app opens or comes back to the front.
+  useEffect(() => {
+    if (!isNative) return
+    const refresh = () => { if (document.visibilityState === 'visible') void syncReminders(readReminderData().reminders, false) }
+    refresh()
+    document.addEventListener('visibilitychange', refresh)
+    return () => document.removeEventListener('visibilitychange', refresh)
+  }, [])
 
   const saveCategory = (draft: CategoryDraft): boolean => {
     const id = draft.id ?? newCategoryId()
@@ -364,6 +392,8 @@ export default function App() {
             data={data}
             routineData={routineData}
             categoryData={categoryData}
+            reminderData={reminderData}
+            onRemindersChange={commitReminders}
             onAddCategory={() => setEditingCategory({ draft: blankCategory(categoryData) })}
             onEditCategory={(category) => setEditingCategory({ draft: category })}
             theme={theme}
@@ -1065,10 +1095,12 @@ function MonthSummary({ records, dates }: { records: AppData['records']; dates: 
   </section>
 }
 
-function SettingsPage({ data, routineData, categoryData, onAddCategory, onEditCategory, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
+function SettingsPage({ data, routineData, categoryData, reminderData, onRemindersChange, onAddCategory, onEditCategory, theme, clearArmed, onThemeChange, onImport, onNotice, onArmClear, onCancelClear, onClear }: {
   data: AppData
   routineData: RoutineData
   categoryData: CategoryData
+  reminderData: ReminderData
+  onRemindersChange: (next: ReminderData) => boolean
   onAddCategory: () => void
   onEditCategory: (category: CustomCategory) => void
   theme: ThemeMode
@@ -1129,6 +1161,7 @@ function SettingsPage({ data, routineData, categoryData, onAddCategory, onEditCa
           </label>)}
         </div>
       </section>
+      <ReminderSettings data={reminderData} onChange={onRemindersChange} />
       <CategorySettings data={categoryData} records={data.records} onAdd={onAddCategory} onEdit={onEditCategory} />
       <section className="setting-section" aria-labelledby="backup-title">
         <div className="setting-heading">

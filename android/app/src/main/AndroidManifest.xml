@@ -32,4 +32,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Daily reminders fire at the exact minute the user picked. Granted automatically on Android 13+ for
+         a sideloaded app; Android 12 grants the plugin's SCHEDULE_EXACT_ALARM at install instead. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 </manifest>

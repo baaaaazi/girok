@@ -6,6 +6,7 @@ import { EMPTY_ROUTINE_DATA, ROUTINE_STORAGE_KEY, clearRoutineData, dayComplete,
 import { backupFile } from '../src/lib/storage.ts'
 import { CATEGORY_STORAGE_KEY, EMPTY_CATEGORY_DATA, categoryHours, categoryMeta, categoryOrder, isCategoryId, nameTaken, readCategoryData, reassignCategory, removeCategory, upsertCategory, validateCategoryData, writeCategoryData } from '../src/lib/categories.ts'
 import type { CategoryData } from '../src/types/category.ts'
+import { EMPTY_REMINDER_DATA, REMINDER_STORAGE_KEY, newReminderId, readReminderData, reminderNotificationIds, reminderOccurrences, removeReminder, timeLabel, upsertReminder, validateReminderData, writeReminderData } from '../src/lib/reminders.ts'
 import { categoryChanges, formatMinutes, recordingStreak, subjectParticle } from '../src/lib/insights.ts'
 import type { Activity, AppData, LegacyAppData } from '../src/types/record.ts'
 import type { Goal, Routine, RoutineData } from '../src/types/routine.ts'
@@ -339,5 +340,35 @@ assert.equal(recordingStreak(insightRecords, '2026-10-01'), 8) // 09-24 through 
 assert.equal(recordingStreak(insightRecords, '2026-10-02'), 8) // today still blank keeps yesterday's streak
 assert.equal(recordingStreak(insightRecords, '2026-10-03'), 0) // a missed day breaks it
 assert.equal(recordingStreak({}, '2026-10-01'), 0)
+
+// Reminders: ids double as Android notification ids, and the list stays in time order.
+let reminders = upsertReminder(EMPTY_REMINDER_DATA, { id: newReminderId(EMPTY_REMINDER_DATA), time: '23:00', text: '오늘 루틴 체크', enabled: true })
+reminders = upsertReminder(reminders, { id: newReminderId(reminders), time: '12:30', text: '오전 기록하기', enabled: true })
+assert.deepEqual(reminders.reminders.map((item) => [item.id, item.time]), [[2, '12:30'], [1, '23:00']])
+reminders = upsertReminder(reminders, { ...reminders.reminders[1], enabled: false })
+assert.equal(reminders.reminders.length, 2)
+assert.equal(reminders.reminders[1].enabled, false)
+assert.equal(validateReminderData(reminders), true)
+assert.equal(newReminderId(removeReminder(reminders, 1)), 3)
+for (const bad of [{ id: 0, time: '09:00', text: 'x', enabled: true }, { id: 1, time: '24:00', text: 'x', enabled: true }, { id: 1, time: '9:00', text: 'x', enabled: true }, { id: 1, time: '09:00', text: ' ', enabled: true }, { id: 1.5, time: '09:00', text: 'x', enabled: true }]) {
+  assert.equal(validateReminderData({ version: 1, reminders: [bad] }), false)
+}
+assert.equal(validateReminderData({ version: 1, reminders: [reminders.reminders[0], reminders.reminders[0]] }), false)
+assert.equal(writeReminderData(reminders), true)
+assert.deepEqual(readReminderData(), reminders)
+const morning = { id: 3, time: '09:00', text: '아침', enabled: true }
+const night = { id: 4, time: '23:00', text: '밤', enabled: true }
+const at1000 = new Date(2026, 9, 1, 10, 0) // today's 09:00 has already passed
+const upcoming = reminderOccurrences([morning, night, { ...night, id: 5, enabled: false }], at1000, 3)
+assert.deepEqual(upcoming.map((item) => [item.notificationId, item.at.getDate(), item.at.getHours()]), [[400, 1, 23], [301, 2, 9], [401, 2, 23], [302, 3, 9], [402, 3, 23]])
+assert.equal(reminderOccurrences([morning], new Date(2026, 9, 31, 8, 0), 2)[1].at.getMonth(), 10) // rolls into November
+assert.deepEqual(reminderNotificationIds([morning], 3), [300, 301, 302])
+assert.equal(validateReminderData({ version: 1, reminders: [{ ...morning, id: 20_000_000 }] }), false)
+bytes.set(REMINDER_STORAGE_KEY, '[]')
+assert.deepEqual(readReminderData(), EMPTY_REMINDER_DATA)
+assert.deepEqual(timeLabel('00:05'), { period: '오전', clock: '12:05' })
+assert.deepEqual(timeLabel('12:30'), { period: '오후', clock: '12:30' })
+assert.deepEqual(timeLabel('23:00'), { period: '오후', clock: '11:00' })
+bytes.clear()
 
 console.log('self-check passed')
